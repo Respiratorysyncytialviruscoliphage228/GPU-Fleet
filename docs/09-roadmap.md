@@ -9,21 +9,23 @@
 
 ## Phase 1：最小可运行链路
 
-- 编写 Windows/Linux Agent。
-- 使用 `nvidia-smi` 采集基础 GPU 指标。
-- 实现 HMAC 上报。
-- 实现服务端接收 API。
-- 写入 VictoriaMetrics。
-- SQLite 保存设备元数据。
-- Web 展示设备列表和当前指标。
+- 编写 Windows/Linux Agent：已完成 MVP。
+- 使用 `nvidia-smi` 采集基础 GPU 指标：已完成，含风扇、时钟、P-State、PCIe 字段。
+- 实现 HMAC 上报：已完成。
+- 实现服务端接收 API：已完成。
+- MVP 写入 gzip JSONL 压缩分段文件：已完成。
+- MVP JSON 元数据存储：已完成。
+- Web 展示设备列表和当前指标：已完成。
+- 生产适配 VictoriaMetrics：待做。
+- 生产适配 SQLite：待做。
 
 ## Phase 2：历史曲线和统计
 
-- GPU 详情页。
-- 最近 1 小时、24 小时、7 天曲线。
-- 平均利用率、峰值温度、峰值功耗统计。
-- 设备离线检测。
-- Agent 本地队列。
+- GPU 详情页：待做。
+- 最近 1 小时、24 小时、7 天曲线 API：已完成基础接口，待补 UI。
+- 平均利用率、峰值温度、峰值功耗统计：待做。
+- 设备离线检测：已完成基础状态判定。
+- Agent 本地队列：待做。
 
 ## Phase 3：安全和运维完善
 
@@ -64,4 +66,3 @@
 - 更多指标。
 - 更丰富图表。
 - 更复杂统计。
-
