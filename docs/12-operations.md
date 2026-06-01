@@ -93,6 +93,21 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 
 生产环境建议在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 `127.0.0.1:8080`。
 
+## 设备注册和密钥轮换
+
+推荐从 Web 面板的“设备”页注册新设备。注册后页面会显示一次性设备密钥，把该密钥写入目标机器的 Agent 本地配置或安装脚本参数：
+
+```powershell
+.\scripts\install-agent-windows.ps1 `
+  -ServerUrl "https://your-server:8443" `
+  -DeviceId "device_20260602120000" `
+  -Secret "replace-with-one-time-secret"
+```
+
+轮换密钥后，旧密钥立即失效。服务端只更新认证记录，不会远程修改客户端配置；需要设备管理员在客户端本机同步更新 Agent 的密钥。
+
+禁用设备会让服务端拒绝该设备继续上报，适合设备退役、密钥泄露或临时阻断接入。
+
 ## 安全注意
 
 - Agent 服务只主动访问服务端，不监听端口。

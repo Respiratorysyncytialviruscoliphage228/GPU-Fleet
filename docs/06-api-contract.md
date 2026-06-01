@@ -130,6 +130,7 @@ POST /api/v1/agent/process-snapshots
 | 403 | 设备被禁用 |
 | 409 | nonce 重放 |
 | 413 | 请求体过大 |
+| 429 | 登录或 Agent 上报触发限流 |
 | 507 | 磁盘空间保护，拒绝写入 |
 
 预留增强：
@@ -137,7 +138,6 @@ POST /api/v1/agent/process-snapshots
 | 状态码 | 含义 |
 | --- | --- |
 | 408 | 请求时间戳过期，当前实现归入 `401` |
-| 429 | 独立限流，当前尚未实现 |
 
 ## Web API
 
@@ -154,6 +154,9 @@ GET  /api/v1/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/processes/latest
 POST /api/v1/admin/devices
+POST /api/v1/admin/devices/{device_id}/enable
+POST /api/v1/admin/devices/{device_id}/disable
+POST /api/v1/admin/devices/{device_id}/rotate-secret
 ```
 
 规划中接口：
@@ -163,8 +166,49 @@ GET  /api/v1/devices/{device_id}
 GET  /api/v1/devices/{device_id}/gpus
 GET  /api/v1/gpus/{gpu_id}/processes/latest
 GET  /api/v1/alerts
-POST /api/v1/admin/devices/{device_id}/rotate-secret
-POST /api/v1/admin/devices/{device_id}/disable
 ```
 
 管理接口只影响服务端记录和认证状态，不修改客户端本地配置。
+
+### 创建设备
+
+```text
+POST /api/v1/admin/devices
+```
+
+请求：
+
+```json
+{
+  "alias": "worker-a100-01"
+}
+```
+
+响应：
+
+```json
+{
+  "device": {
+    "id": "device_20260602120000",
+    "alias": "worker-a100-01",
+    "enabled": true
+  },
+  "secret": "one-time-device-secret"
+}
+```
+
+设备密钥只在创建或轮换接口响应中返回一次。服务端保存密钥用于校验 Agent HMAC，上报响应不会返回任何命令、配置或可执行动作。
+
+### 启用、禁用和轮换密钥
+
+```text
+POST /api/v1/admin/devices/{device_id}/enable
+POST /api/v1/admin/devices/{device_id}/disable
+POST /api/v1/admin/devices/{device_id}/rotate-secret
+```
+
+- `enable`：允许该设备继续通过现有密钥上报。
+- `disable`：服务端拒绝该设备后续上报，返回 `403`。
+- `rotate-secret`：生成新密钥；旧密钥立即失效。
+
+这些操作只改变服务端认证记录。Agent 仍由本机管理员维护配置，服务端不会远程改写 Agent 配置。

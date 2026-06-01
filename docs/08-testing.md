@@ -49,6 +49,7 @@ cd ..
 - `gpufleet-agent.exe` 构建成功。
 - `npm run build` 通过，Vite 仅提示 JS chunk 大于 500kB。
 - `internal/server` 已有静态面板路由测试，覆盖 React 入口、静态资源、SPA fallback、API 404 和目录越界防护。
+- `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、禁用、启用、轮换密钥、旧密钥失效和新密钥生效。
 
 ### 本机采集验证
 
@@ -99,6 +100,40 @@ cd ..
 
 这证明当前 MVP 已经打通 React 静态面板托管、本机 Agent 采集、HMAC 上报、服务端接收、压缩存储、登录查询、统计 API 和 GPU 进程快照 API。
 
+### 设备生命周期验证
+
+已通过单元测试和本机真实 HTTP 端到端验证覆盖：
+
+1. 登录 Web API。
+2. 调用 `POST /api/v1/admin/devices` 创建设备并取得一次性密钥。
+3. 使用新设备密钥发送签名心跳，返回 `202`。
+4. 调用 `POST /api/v1/admin/devices/{id}/disable` 禁用设备。
+5. 使用原密钥继续发送签名心跳，返回 `403`。
+6. 调用 `POST /api/v1/admin/devices/{id}/enable` 启用设备。
+7. 调用 `POST /api/v1/admin/devices/{id}/rotate-secret` 轮换密钥。
+8. 使用旧密钥发送签名心跳，返回 `401`。
+9. 使用新密钥发送签名心跳，返回 `202`。
+
+这验证了管理接口只影响服务端认证状态，不向客户端返回命令、配置或可执行动作。
+
+本机端到端验证使用临时服务端 `127.0.0.1:18107`、`web/dist` 静态面板和真实 `gpufleet-agent.exe` 完成。验证结果：
+
+```json
+{
+  "react_index_served": true,
+  "disabled_upload_exit": 1,
+  "old_secret_upload_exit": 1,
+  "device_count": 2,
+  "online_device_count": 1,
+  "gpu_count": 1,
+  "stats_count": 1,
+  "process_count": 30,
+  "disk_status": "ok"
+}
+```
+
+其中 `disabled_upload_exit: 1` 表示禁用设备后真实 Agent 上报被服务端拒绝；`old_secret_upload_exit: 1` 表示密钥轮换后旧密钥失效。随后使用新密钥上报成功。
+
 ## Agent 测试计划
 
 ### Windows
@@ -130,6 +165,8 @@ cd ..
 - gzip 请求体解压后大小限制。
 - 当前 MVP 压缩分段文件保留清理：写入前执行。
 - 静态面板目录越界防护：已用单元测试覆盖。
+- 设备创建、禁用、启用和密钥轮换：已用单元测试覆盖。
+- 登录限流：已用单元测试覆盖。
 - 后续 VictoriaMetrics 不可用时返回可诊断错误。
 - 后续 SQLite 锁等待和恢复。
 
