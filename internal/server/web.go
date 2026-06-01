@@ -181,6 +181,23 @@ const dashboardHTML = `<!doctype html>
     .gpu {
       padding: 14px;
     }
+    .process-list {
+      display: grid;
+      gap: 6px;
+    }
+    .process-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .process-row:last-child { border-bottom: 0; }
+    .mono {
+      font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+    }
     .meter {
       height: 9px;
       background: color-mix(in srgb, var(--line) 55%, transparent);
@@ -293,9 +310,15 @@ const dashboardHTML = `<!doctype html>
           <div class="gpu-list" id="gpuList"></div>
           <canvas id="chart" class="chart" width="900" height="230"></canvas>
         </div>
-        <div class="panel">
-          <div class="row"><strong>设备</strong><span class="pill" id="deviceCount">0</span></div>
-          <div id="deviceList"></div>
+        <div class="grid">
+          <div class="panel">
+            <div class="row"><strong>设备</strong><span class="pill" id="deviceCount">0</span></div>
+            <div id="deviceList"></div>
+          </div>
+          <div class="panel">
+            <div class="row"><strong>GPU 进程</strong><span class="pill" id="processCount">0</span></div>
+            <div id="processList" class="process-list"></div>
+          </div>
         </div>
       </section>
     </main>
@@ -362,6 +385,7 @@ const dashboardHTML = `<!doctype html>
       document.getElementById('gpuUpdated').textContent = data.latest_gpus.length ? new Date(data.latest_gpus[0].timestamp).toLocaleTimeString() : '-';
       renderDevices(data.devices);
       renderGPUs(data.latest_gpus);
+      renderProcesses(data.latest_processes || []);
       drawChart(data.latest_gpus);
     }
     function renderDevices(devices) {
@@ -388,6 +412,18 @@ const dashboardHTML = `<!doctype html>
           (temp === null ? '-' : Math.round(temp) + '°C') + '</span></div><div class="row"><span>功耗</span><span>' +
           (gpu.power_draw_watts == null ? '-' : gpu.power_draw_watts.toFixed(1) + ' W') + '</span></div></article>';
       }).join('') || '<p class="sub">等待 Agent 上报 GPU 数据</p>';
+    }
+    function renderProcesses(items) {
+      document.getElementById('processCount').textContent = items.length;
+      const list = document.getElementById('processList');
+      list.innerHTML = items.slice(0, 40).map(item => {
+        const proc = item.process || {};
+        const mem = proc.used_memory_bytes ? fmtBytes(proc.used_memory_bytes) : '-';
+        return '<div class="process-row"><div><strong>' + esc(proc.process_name || 'unknown') +
+          '</strong><div class="sub mono">PID ' + esc(proc.pid) + ' · ' +
+          esc(item.device_id || '-') + ' · ' + esc(proc.gpu_id || '-') +
+          '</div></div><span class="pill">' + mem + '</span></div>';
+      }).join('') || '<p class="sub">暂无 GPU 进程快照</p>';
     }
     function drawChart(items) {
       const canvas = document.getElementById('chart');

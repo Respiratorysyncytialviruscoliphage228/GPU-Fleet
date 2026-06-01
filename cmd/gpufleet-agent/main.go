@@ -21,6 +21,7 @@ func main() {
 	var intervalSeconds int
 	var once bool
 	var printOnly bool
+	var collectProcesses bool
 	var gzipBody bool
 
 	flag.StringVar(&serverURL, "server-url", env("GPUFLEET_SERVER_URL", "http://127.0.0.1:8080"), "GPUFleet server URL")
@@ -30,6 +31,7 @@ func main() {
 	flag.IntVar(&intervalSeconds, "interval", envInt("GPUFLEET_INTERVAL", 10), "sample interval seconds")
 	flag.BoolVar(&once, "once", false, "collect and upload one sample")
 	flag.BoolVar(&printOnly, "print", false, "collect one sample and print JSON without uploading")
+	flag.BoolVar(&collectProcesses, "processes", envBool("GPUFLEET_PROCESSES", true), "collect GPU process snapshots")
 	flag.BoolVar(&gzipBody, "gzip", true, "gzip request body")
 	flag.Parse()
 
@@ -66,9 +68,10 @@ func main() {
 			Timeout:   10 * time.Second,
 			UseGzip:   gzipBody,
 		},
-		Collector:      agent.NewCollector(nvidiaSMI, 5*time.Second),
-		SampleInterval: time.Duration(intervalSeconds) * time.Second,
-		Once:           once,
+		Collector:        agent.NewCollector(nvidiaSMI, 5*time.Second),
+		SampleInterval:   time.Duration(intervalSeconds) * time.Second,
+		CollectProcesses: collectProcesses,
+		Once:             once,
 	}
 	if err := runner.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "gpufleet-agent: %v\n", err)
@@ -93,4 +96,19 @@ func envInt(key string, fallback int) int {
 		return value
 	}
 	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	switch raw {
+	case "1", "true", "TRUE", "yes", "YES", "on", "ON":
+		return true
+	case "0", "false", "FALSE", "no", "NO", "off", "OFF":
+		return false
+	default:
+		return fallback
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,61 @@ func (c Collector) Collect(ctx context.Context) (model.GPUSample, error) {
 		sample.GPUs = append(sample.GPUs, status)
 	}
 	return sample, nil
+}
+
+func (c Collector) CollectProcesses(ctx context.Context, sample model.GPUSample) (model.ProcessBatch, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	defer cancel()
+
+	uuidToGPU := map[string]string{}
+	for _, gpu := range sample.GPUs {
+		if gpu.UUIDHash != "" && gpu.GPUID != "" {
+			uuidToGPU[gpu.UUIDHash] = gpu.GPUID
+		}
+	}
+
+	args := []string{
+		"--query-compute-apps=gpu_uuid,pid,process_name,used_memory",
+		"--format=csv,noheader,nounits",
+	}
+	cmd := exec.CommandContext(ctx, c.Command, args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return model.ProcessBatch{Timestamp: time.Now().UTC()}, err
+	}
+
+	reader := csv.NewReader(bytes.NewReader(output))
+	reader.TrimLeadingSpace = true
+	records, err := reader.ReadAll()
+	if err != nil {
+		return model.ProcessBatch{}, err
+	}
+
+	batch := model.ProcessBatch{Timestamp: time.Now().UTC()}
+	for _, record := range records {
+		if len(record) < 4 {
+			continue
+		}
+		uuidHash := "sha256:" + auth.SHA256Hex(clean(record[0]))
+		processName := clean(record[2])
+		if processName == "" {
+			processName = "unknown"
+		} else {
+			processName = filepath.Base(processName)
+		}
+		snapshot := model.ProcessSnapshot{
+			GPUID:           uuidToGPU[uuidHash],
+			UUIDHash:        uuidHash,
+			PID:             int(parseUint(record[1])),
+			ProcessName:     processName,
+			UsedMemoryBytes: parseUint(record[3]) * 1024 * 1024,
+		}
+		if snapshot.PID == 0 {
+			continue
+		}
+		batch.Processes = append(batch.Processes, snapshot)
+	}
+	return batch, nil
 }
 
 func clean(value string) string {

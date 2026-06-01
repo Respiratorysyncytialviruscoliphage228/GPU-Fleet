@@ -31,12 +31,13 @@ type Config struct {
 }
 
 type App struct {
-	config   Config
-	meta     *MetadataStore
-	metrics  *MetricsStore
-	nonces   *NonceStore
-	sessions *SessionStore
-	logger   *log.Logger
+	config    Config
+	meta      *MetadataStore
+	metrics   *MetricsStore
+	processes *ProcessStore
+	nonces    *NonceStore
+	sessions  *SessionStore
+	logger    *log.Logger
 }
 
 func NewApp(config Config, logger *log.Logger) (*App, string, error) {
@@ -69,14 +70,19 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	processes, err := NewProcessStore(filepath.Join(config.DataDir, "processes.json"))
+	if err != nil {
+		return nil, "", err
+	}
 
 	return &App{
-		config:   config,
-		meta:     meta,
-		metrics:  metrics,
-		nonces:   NewNonceStore(10 * time.Minute),
-		sessions: NewSessionStore(12 * time.Hour),
-		logger:   logger,
+		config:    config,
+		meta:      meta,
+		metrics:   metrics,
+		processes: processes,
+		nonces:    NewNonceStore(10 * time.Minute),
+		sessions:  NewSessionStore(12 * time.Hour),
+		logger:    logger,
 	}, generatedPassword, nil
 }
 
@@ -89,9 +95,11 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/devices", a.requireSession(a.handleDevices))
 	mux.HandleFunc("/api/v1/gpus/", a.requireSession(a.handleGPUSeries))
 	mux.HandleFunc("/api/v1/stats/gpu-utilization", a.requireSession(a.handleGPUStats))
+	mux.HandleFunc("/api/v1/processes/latest", a.requireSession(a.handleLatestProcesses))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)
 	mux.HandleFunc("/api/v1/agent/samples", a.handleAgentSamples)
+	mux.HandleFunc("/api/v1/agent/process-snapshots", a.handleAgentProcesses)
 	return securityHeaders(mux)
 }
 
@@ -208,6 +216,7 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		Disk:               diskStatus,
 		Devices:            deviceViews,
 		LatestGPUs:         latest,
+		LatestProcesses:    a.processes.Latest("", ""),
 		RetentionHours:     int(a.config.Retention.Hours()),
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
 	})
@@ -294,6 +303,10 @@ func (a *App) handleGPUStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleLatestProcesses(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.processes.Latest(r.URL.Query().Get("device_id"), r.URL.Query().Get("gpu_id")))
+}
+
 func (a *App) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -361,6 +374,37 @@ func (a *App) handleAgentSamples(w http.ResponseWriter, r *http.Request) {
 	last := batch.Samples[len(batch.Samples)-1].Timestamp
 	_ = a.meta.RecordSample(deviceID, last)
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "accepted_samples": len(batch.Samples)})
+}
+
+func (a *App) handleAgentProcesses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	deviceID, body, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	var batch model.ProcessBatch
+	if err := json.Unmarshal(body, &batch); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if batch.DeviceID == "" {
+		batch.DeviceID = deviceID
+	}
+	if batch.DeviceID != deviceID {
+		writeError(w, http.StatusBadRequest, "device id mismatch")
+		return
+	}
+	if batch.Timestamp.IsZero() {
+		batch.Timestamp = time.Now().UTC()
+	}
+	if err := a.processes.Replace(batch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "accepted_processes": len(batch.Processes)})
 }
 
 func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
@@ -489,19 +533,20 @@ func parseHours(r *http.Request, fallback int) int {
 }
 
 type overviewResponse struct {
-	ServerTime         time.Time    `json:"server_time"`
-	DeviceCount        int          `json:"device_count"`
-	OnlineDeviceCount  int          `json:"online_device_count"`
-	GPUCount           int          `json:"gpu_count"`
-	AverageUtilization float64      `json:"average_utilization"`
-	MemoryUsedBytes    uint64       `json:"memory_used_bytes"`
-	MemoryTotalBytes   uint64       `json:"memory_total_bytes"`
-	HotGPUCount        int          `json:"hot_gpu_count"`
-	Disk               DiskStatus   `json:"disk"`
-	Devices            []deviceView `json:"devices"`
-	LatestGPUs         []StoredGPU  `json:"latest_gpus"`
-	RetentionHours     int          `json:"retention_hours"`
-	MinFreeSpaceBytes  uint64       `json:"min_free_space_bytes"`
+	ServerTime         time.Time               `json:"server_time"`
+	DeviceCount        int                     `json:"device_count"`
+	OnlineDeviceCount  int                     `json:"online_device_count"`
+	GPUCount           int                     `json:"gpu_count"`
+	AverageUtilization float64                 `json:"average_utilization"`
+	MemoryUsedBytes    uint64                  `json:"memory_used_bytes"`
+	MemoryTotalBytes   uint64                  `json:"memory_total_bytes"`
+	HotGPUCount        int                     `json:"hot_gpu_count"`
+	Disk               DiskStatus              `json:"disk"`
+	Devices            []deviceView            `json:"devices"`
+	LatestGPUs         []StoredGPU             `json:"latest_gpus"`
+	LatestProcesses    []StoredProcessSnapshot `json:"latest_processes"`
+	RetentionHours     int                     `json:"retention_hours"`
+	MinFreeSpaceBytes  uint64                  `json:"min_free_space_bytes"`
 }
 
 type deviceView struct {

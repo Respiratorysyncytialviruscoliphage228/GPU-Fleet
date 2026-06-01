@@ -32,6 +32,10 @@ func (c *Client) PostSamples(batch model.SampleBatch) error {
 	return c.postJSON("/api/v1/agent/samples", batch)
 }
 
+func (c *Client) PostProcesses(batch model.ProcessBatch) error {
+	return c.postJSON("/api/v1/agent/process-snapshots", batch)
+}
+
 func (c *Client) postJSON(path string, value any) error {
 	if c.Timeout == 0 {
 		c.Timeout = 10 * time.Second

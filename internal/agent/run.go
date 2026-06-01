@@ -11,10 +11,11 @@ import (
 )
 
 type Runner struct {
-	Client         *Client
-	Collector      Collector
-	SampleInterval time.Duration
-	Once           bool
+	Client           *Client
+	Collector        Collector
+	SampleInterval   time.Duration
+	CollectProcesses bool
+	Once             bool
 }
 
 func (r Runner) Run(ctx context.Context) error {
@@ -69,6 +70,15 @@ func (r Runner) collectAndUpload(ctx context.Context) error {
 	}
 	if postErr := r.Client.PostSamples(batch); postErr != nil {
 		return postErr
+	}
+	if r.CollectProcesses {
+		processes, processErr := r.Collector.CollectProcesses(ctx, sample)
+		processes.DeviceID = r.Client.DeviceID
+		if processErr == nil {
+			if postErr := r.Client.PostProcesses(processes); postErr != nil {
+				return postErr
+			}
+		}
 	}
 	return err
 }
