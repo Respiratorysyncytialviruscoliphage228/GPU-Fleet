@@ -376,6 +376,10 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		return "", nil, false
 	}
 	nonce := r.Header.Get(auth.HeaderNonce)
+	if nonce == "" {
+		writeError(w, http.StatusUnauthorized, "missing nonce")
+		return "", nil, false
+	}
 	if !a.nonces.Accept(deviceID, nonce, time.Now()) {
 		writeError(w, http.StatusConflict, "replayed nonce")
 		return "", nil, false
@@ -416,7 +420,7 @@ func readBody(r *http.Request, limit int64) ([]byte, error) {
 			return nil, err
 		}
 		defer gz.Close()
-		reader = gz
+		reader = io.LimitReader(gz, limit+1)
 	}
 	body, err := io.ReadAll(reader)
 	if err != nil {
