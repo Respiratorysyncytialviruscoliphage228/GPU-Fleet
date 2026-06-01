@@ -29,17 +29,38 @@ type GPUStatus struct {
 	UUIDHash              string   `json:"uuid_hash"`
 	Name                  string   `json:"name"`
 	DriverVersion         string   `json:"driver_version"`
+	VBIOSVersion          string   `json:"vbios_version,omitempty"`
 	MemoryTotalBytes      uint64   `json:"memory_total_bytes"`
 	MemoryUsedBytes       uint64   `json:"memory_used_bytes"`
+	MemoryFreeBytes       uint64   `json:"memory_free_bytes,omitempty"`
+	MemoryReservedBytes   uint64   `json:"memory_reserved_bytes,omitempty"`
 	UtilizationGPUPercent *float64 `json:"utilization_gpu_percent,omitempty"`
+	UtilizationMemPercent *float64 `json:"utilization_memory_percent,omitempty"`
 	TemperatureCelsius    *float64 `json:"temperature_celsius,omitempty"`
+	TemperatureMemCelsius *float64 `json:"temperature_memory_celsius,omitempty"`
+	TemperatureLimitC     *float64 `json:"temperature_limit_celsius,omitempty"`
 	PowerDrawWatts        *float64 `json:"power_draw_watts,omitempty"`
+	PowerLimitWatts       *float64 `json:"power_limit_watts,omitempty"`
+	PowerEnforcedLimitW   *float64 `json:"power_enforced_limit_watts,omitempty"`
 	FanSpeedPercent       *float64 `json:"fan_speed_percent,omitempty"`
 	GraphicsClockMHz      *float64 `json:"graphics_clock_mhz,omitempty"`
 	MemoryClockMHz        *float64 `json:"memory_clock_mhz,omitempty"`
+	SMClockMHz            *float64 `json:"sm_clock_mhz,omitempty"`
+	VideoClockMHz         *float64 `json:"video_clock_mhz,omitempty"`
 	PState                string   `json:"pstate,omitempty"`
 	PCIeLinkGeneration    string   `json:"pcie_link_generation,omitempty"`
 	PCIeLinkWidth         string   `json:"pcie_link_width,omitempty"`
+	PCIeLinkGenerationMax string   `json:"pcie_link_generation_max,omitempty"`
+	PCIeLinkWidthMax      string   `json:"pcie_link_width_max,omitempty"`
+	ComputeMode           string   `json:"compute_mode,omitempty"`
+	ComputeCapability     string   `json:"compute_capability,omitempty"`
+	DisplayActive         string   `json:"display_active,omitempty"`
+	DisplayAttached       string   `json:"display_attached,omitempty"`
+	PersistenceMode       string   `json:"persistence_mode,omitempty"`
+	DriverModel           string   `json:"driver_model,omitempty"`
+	ECCModeCurrent        string   `json:"ecc_mode_current,omitempty"`
+	MIGModeCurrent        string   `json:"mig_mode_current,omitempty"`
+	ClockThrottleReasons  string   `json:"clock_throttle_reasons,omitempty"`
 	CollectionError       string   `json:"collection_error,omitempty"`
 }
 
