@@ -86,16 +86,17 @@ func NewMetricsStore(dir string, minFreeBytes uint64, retention time.Duration) (
 }
 
 func (s *MetricsStore) AppendBatch(batch model.SampleBatch) error {
-	if err := s.ensureWritable(); err != nil {
-		return err
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if time.Since(s.lastCleanup) > time.Hour {
-		_ = s.cleanupLocked()
+		if err := s.cleanupLocked(); err != nil {
+			return err
+		}
 		s.lastCleanup = time.Now()
+	}
+	if err := s.ensureWritable(); err != nil {
+		return err
 	}
 
 	bySegment := map[string][]StoredSample{}
