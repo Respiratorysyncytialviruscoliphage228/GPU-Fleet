@@ -17,6 +17,7 @@ import {
   LogIn,
   LogOut,
   MonitorUp,
+  Moon,
   Plus,
   Power,
   PowerOff,
@@ -24,11 +25,13 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sun,
   Thermometer,
   Zap
 } from 'lucide-react';
 import {
   createDevice,
+  Device,
   getOverview,
   getStats,
   GPUStats,
@@ -47,6 +50,13 @@ echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRendere
 const queryClient = new QueryClient();
 type View = 'overview' | 'devices' | 'gpus' | 'settings';
 type AuthState = 'checking' | 'authenticated' | 'anonymous';
+type Theme = 'light' | 'dark';
+
+function initialTheme(): Theme {
+  const stored = window.localStorage.getItem('gpufleet-theme');
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
 function fmtBytes(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
@@ -82,6 +92,17 @@ function temp(value?: number) {
 
 function App() {
   const [authState, setAuthState] = useState<AuthState>('checking');
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem('gpufleet-theme', theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((current) => current === 'dark' ? 'light' : 'dark');
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -98,21 +119,24 @@ function App() {
   }, []);
 
   if (authState === 'checking') {
-    return <LoadingScreen />;
+    return <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />;
   }
   if (authState === 'anonymous') {
-    return <Login onSuccess={() => setAuthState('authenticated')} />;
+    return <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />;
   }
-  return <Dashboard onUnauthorized={() => setAuthState('anonymous')} />;
+  return <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />;
 }
 
-function LoadingScreen() {
+function LoadingScreen({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   return (
     <main className="login-shell">
       <div className="login-panel auth-loading">
-        <div className="brand">
-          <span className="brand-mark">G</span>
-          <span>GPUFleet</span>
+        <div className="login-head">
+          <div className="brand">
+            <span className="brand-mark">G</span>
+            <span>GPUFleet</span>
+          </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>正在连接</h1>
         <p>检查当前 Web 会话</p>
@@ -121,7 +145,7 @@ function LoadingScreen() {
   );
 }
 
-function Login({ onSuccess }: { onSuccess: () => void }) {
+function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void }) {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -144,9 +168,12 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   return (
     <main className="login-shell">
       <form className="login-panel" onSubmit={submit}>
-        <div className="brand">
-          <span className="brand-mark">G</span>
-          <span>GPUFleet</span>
+        <div className="login-head">
+          <div className="brand">
+            <span className="brand-mark">G</span>
+            <span>GPUFleet</span>
+          </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>登录面板</h1>
         <label>
@@ -167,7 +194,7 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
+function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: () => void; theme: Theme; onToggleTheme: () => void }) {
   const [view, setView] = useState<View>('overview');
   const overview = useQuery({
     queryKey: ['overview'],
@@ -224,6 +251,7 @@ function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             <p>{data ? `服务端时间 ${new Date(data.server_time).toLocaleString()}` : '等待服务端数据'}</p>
           </div>
           <div className="top-actions">
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             <button className="icon-button" onClick={() => overview.refetch()} title="刷新">
               <RefreshCw size={18} />
             </button>
@@ -236,42 +264,226 @@ function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         {data?.disk.status === 'critical' && <div className="banner danger">磁盘空间低于保护阈值，服务端已拒绝新指标写入。</div>}
         {overview.error && <div className="banner danger">{overview.error.message}</div>}
 
-        {(view === 'overview' || view === 'gpus') && (
-          <>
-            <section className="stat-grid">
-              <Metric icon={<MonitorUp />} label="在线设备" value={`${data?.online_device_count ?? 0} / ${data?.device_count ?? 0}`} />
-              <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
-              <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
-              <Metric icon={<Database />} label="显存占用" value={pct(memoryPct)} />
-              <Metric icon={<HardDrive />} label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status} />
-            </section>
-
-            <section className="main-grid">
-              <div className="panel">
-                <div className="panel-head">
-                  <h2>GPU 状态</h2>
-                  <span>{data?.latest_gpus.length ?? 0}</span>
-                </div>
-                <div className="gpu-grid">
-                  {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} />)}
-                </div>
-                <UtilChart items={data?.latest_gpus ?? []} />
-              </div>
-              <div className="stack">
-                <DevicePanel data={data} />
-                <ProcessPanel items={data?.latest_processes ?? []} />
-              </div>
-            </section>
-
-            <StatsPanel statRows={statRows} />
-          </>
-        )}
+        {view === 'overview' && <OverviewPage data={data} statRows={statRows} theme={theme} />}
+        {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} memoryPct={memoryPct} theme={theme} />}
 
         {view === 'devices' && <DeviceAdminPanel data={data} />}
         {view === 'settings' && <SettingsPanel data={data} />}
       </main>
     </div>
   );
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  return (
+    <button className="icon-button theme-toggle" onClick={onToggle} title={theme === 'dark' ? '切换浅色' : '切换深色'} data-testid="theme-toggle">
+      {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
+}
+
+function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
+  const gpus = data?.latest_gpus ?? [];
+  const devices = data?.devices ?? [];
+  const memoryPct = data?.memory_total_bytes ? (data.memory_used_bytes / data.memory_total_bytes) * 100 : 0;
+  const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
+  const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
+
+  return (
+    <>
+      <section className="fleet-command">
+        <div className="fleet-command-copy">
+          <span className="fleet-eyebrow">Fleet Live</span>
+          <h2>多机 GPU 运行态</h2>
+          <p>{devices.length > 0 ? `${devices.length} 台设备，${gpus.length} 块 GPU，按最新上报状态汇总。` : '等待客户端上报 GPU 运行信息。'}</p>
+        </div>
+        <div className="fleet-kpis">
+          <FleetKPI label="在线设备" value={`${data?.online_device_count ?? 0}/${data?.device_count ?? 0}`} tone={(data?.online_device_count ?? 0) === (data?.device_count ?? 0) ? 'good' : 'warn'} />
+          <FleetKPI label="GPU 总数" value={String(data?.gpu_count ?? 0)} />
+          <FleetKPI label="忙碌 GPU" value={String(busyCount)} tone={busyCount > 0 ? 'accent' : 'good'} />
+          <FleetKPI label="高温 GPU" value={String(hotCount)} tone={hotCount > 0 ? 'bad' : 'good'} />
+          <FleetKPI label="显存占用" value={pct(memoryPct)} />
+          <FleetKPI label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status === 'critical' ? 'bad' : data?.disk.status === 'warning' ? 'warn' : 'good'} />
+        </div>
+      </section>
+
+      <section className="overview-layout">
+        <FleetBoard items={gpus} devices={devices} />
+        <div className="overview-side">
+          <FleetUtilPanel items={gpus} theme={theme} />
+          <DevicePanel data={data} />
+        </div>
+      </section>
+
+      <section className="overview-secondary">
+        <ProcessPanel items={data?.latest_processes ?? []} />
+        <StatsPanel statRows={statRows} />
+      </section>
+    </>
+  );
+}
+
+function GPUDetailPage({ data, statRows, memoryPct, theme }: { data?: Overview; statRows: GPUStats[]; memoryPct: number; theme: Theme }) {
+  return (
+    <>
+      <section className="stat-grid">
+        <Metric icon={<MonitorUp />} label="在线设备" value={`${data?.online_device_count ?? 0} / ${data?.device_count ?? 0}`} />
+        <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
+        <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
+        <Metric icon={<Database />} label="显存占用" value={pct(memoryPct)} />
+        <Metric icon={<HardDrive />} label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status} />
+      </section>
+
+      <section className="main-grid">
+        <div className="panel">
+          <div className="panel-head">
+            <h2>GPU 详细状态</h2>
+            <span>{data?.latest_gpus.length ?? 0}</span>
+          </div>
+          <div className="gpu-grid">
+            {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} />)}
+          </div>
+          <UtilChart items={data?.latest_gpus ?? []} theme={theme} />
+        </div>
+        <div className="stack">
+          <DevicePanel data={data} />
+          <ProcessPanel items={data?.latest_processes ?? []} />
+        </div>
+      </section>
+
+      <StatsPanel statRows={statRows} />
+    </>
+  );
+}
+
+function FleetKPI({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'accent' }) {
+  return (
+    <div className={`fleet-kpi ${tone ?? ''}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] }) {
+  const deviceMap = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
+  const rows = items.map((item) => ({ item, device: deviceMap.get(item.device_id), health: gpuHealth(item, deviceMap.get(item.device_id)) }));
+
+  return (
+    <section className="fleet-board panel" data-testid="fleet-board">
+      <div className="panel-head fleet-board-head">
+        <div>
+          <h2>GPU Fleet</h2>
+          <p>按设备聚合最新 GPU 状态</p>
+        </div>
+        <span>{items.length} GPUs</span>
+      </div>
+      <div className="fleet-table">
+        <div className="fleet-row fleet-header">
+          <span>设备 / GPU</span>
+          <span>GPU 利用率</span>
+          <span>显存</span>
+          <span>温度</span>
+          <span>功耗</span>
+          <span>链路 / 状态</span>
+        </div>
+        {rows.map(({ item, device, health }) => (
+          <div className={`fleet-row ${health.tone}`} key={`${item.device_id}-${item.gpu.gpu_id}`}>
+            <div className="fleet-device-cell" data-label="设备 / GPU">
+              <span className={`status-dot ${health.tone}`} />
+              <div>
+                <strong>{deviceName(device, item.device_id)}</strong>
+                <p>{shortGPUName(item.gpu.name || item.gpu.gpu_id)} · {item.gpu.gpu_id} · {timeAgo(item.timestamp)}</p>
+              </div>
+            </div>
+            <FleetMeterCell label="GPU 利用率" value={item.gpu.utilization_gpu_percent} />
+            <FleetMeterCell label="显存" value={memoryUsagePercent(item)} text={`${pct(memoryUsagePercent(item))} · ${fmtBytes(item.gpu.memory_used_bytes)}`} />
+            <div className="fleet-cell" data-label="温度"><strong>{temp(item.gpu.temperature_celsius)}</strong><p>{tempToneText(item.gpu.temperature_celsius)}</p></div>
+            <div className="fleet-cell" data-label="功耗"><strong>{watts(item.gpu.power_draw_watts)}</strong><p>{item.gpu.power_limit_watts ? `上限 ${watts(item.gpu.power_limit_watts)}` : item.gpu.pstate || '-'}</p></div>
+            <div className="fleet-cell" data-label="链路 / 状态">
+              <span className={`pill ${health.tone}`}>{health.label}</span>
+              <p>{pcieLabel(item)} · {item.gpu.pstate || '-'}</p>
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && <p className="empty">暂无 GPU 上报</p>}
+      </div>
+    </section>
+  );
+}
+
+function FleetMeterCell({ label, value, text }: { label: string; value?: number; text?: string }) {
+  const width = Math.max(0, Math.min(100, value ?? 0));
+  return (
+    <div className="fleet-cell meter-cell" data-label={label}>
+      <div className="meter compact"><i style={{ width: `${width}%` }} /></div>
+      <strong>{text ?? pct(value)}</strong>
+    </div>
+  );
+}
+
+function FleetUtilPanel({ items, theme }: { items: StoredGPU[]; theme: Theme }) {
+  const peak = items.reduce((max, item) => Math.max(max, item.gpu.utilization_gpu_percent ?? 0), 0);
+  const idle = items.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) < 10).length;
+  return (
+    <section className="panel fleet-chart-panel">
+      <div className="panel-head">
+        <div>
+          <h2>利用率分布</h2>
+          <p>当前快照</p>
+        </div>
+        <span>峰值 {pct(peak)}</span>
+      </div>
+      <UtilChart items={items} theme={theme} compact />
+      <div className="rail-facts">
+        <div><span>空闲 GPU</span><strong>{idle}</strong></div>
+        <div><span>活跃 GPU</span><strong>{Math.max(0, items.length - idle)}</strong></div>
+      </div>
+    </section>
+  );
+}
+
+function deviceName(device: Device | undefined, fallback: string) {
+  return device?.alias || device?.hostname || fallback;
+}
+
+function shortGPUName(name: string) {
+  return name.replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+/i, '');
+}
+
+function memoryUsagePercent(item: StoredGPU) {
+  return item.gpu.memory_total_bytes ? (item.gpu.memory_used_bytes / item.gpu.memory_total_bytes) * 100 : undefined;
+}
+
+function pcieLabel(item: StoredGPU) {
+  const current = [item.gpu.pcie_link_generation ? `Gen ${item.gpu.pcie_link_generation}` : '', item.gpu.pcie_link_width ? `x${item.gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
+  return current || 'PCIe -';
+}
+
+function tempToneText(value?: number) {
+  if (typeof value !== 'number') return '-';
+  if (value >= 85) return '过热';
+  if (value >= 80) return '偏高';
+  return '正常';
+}
+
+function timeAgo(value: string) {
+  const delta = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(delta) || delta < 0) return '刚刚';
+  const seconds = Math.floor(delta / 1000);
+  if (seconds < 60) return `${seconds}s 前`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m 前`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h 前`;
+}
+
+function gpuHealth(item: StoredGPU, device?: Device): { tone: 'good' | 'warn' | 'bad' | 'offline'; label: string } {
+  if (!device?.enabled || device.status === 'offline') return { tone: 'offline', label: '离线' };
+  if (item.gpu.collection_error) return { tone: 'bad', label: '采集异常' };
+  if ((item.gpu.temperature_celsius ?? 0) >= 85) return { tone: 'bad', label: '高温' };
+  if ((item.gpu.temperature_celsius ?? 0) >= 80 || (memoryUsagePercent(item) ?? 0) >= 90) return { tone: 'warn', label: '关注' };
+  return { tone: 'good', label: '正常' };
 }
 
 function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: string }) {
@@ -567,14 +779,16 @@ function SettingsPanel({ data }: { data?: Overview }) {
   );
 }
 
-function UtilChart({ items }: { items: StoredGPU[] }) {
+function UtilChart({ items, theme, compact = false }: { items: StoredGPU[]; theme: Theme; compact?: boolean }) {
+  const axisColor = theme === 'dark' ? '#9aa8b5' : '#697789';
+  const barColor = theme === 'dark' ? '#4db6ac' : '#146c78';
   const option = useMemo(() => ({
     tooltip: {},
-    grid: { left: 32, right: 12, top: 22, bottom: 24 },
-    xAxis: { type: 'category', data: items.map((item) => item.gpu.gpu_id), axisLabel: { color: '#748091' } },
-    yAxis: { type: 'value', max: 100, axisLabel: { color: '#748091' } },
-    series: [{ type: 'bar', data: items.map((item) => item.gpu.utilization_gpu_percent ?? 0), itemStyle: { color: '#1769aa', borderRadius: [4, 4, 0, 0] } }]
-  }), [items]);
+    grid: { left: 32, right: 12, top: compact ? 12 : 22, bottom: compact ? 18 : 24 },
+    xAxis: { type: 'category', data: items.map((item) => item.gpu.gpu_id), axisLabel: { color: axisColor } },
+    yAxis: { type: 'value', max: 100, axisLabel: { color: axisColor }, splitLine: { lineStyle: { color: theme === 'dark' ? '#2c3741' : '#d9e0e7' } } },
+    series: [{ type: 'bar', data: items.map((item) => item.gpu.utilization_gpu_percent ?? 0), itemStyle: { color: barColor, borderRadius: [4, 4, 0, 0] } }]
+  }), [axisColor, barColor, compact, items, theme]);
 
   return <EChart option={option} />;
 }

@@ -41,6 +41,7 @@ export type GPUStatus = {
   ecc_mode_current?: string;
   mig_mode_current?: string;
   clock_throttle_reasons?: string;
+  collection_error?: string;
 };
 
 export type StoredGPU = {
