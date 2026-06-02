@@ -57,7 +57,34 @@ func TestStaticDashboardRouting(t *testing.T) {
 func TestBuiltInDashboardFallback(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
-	assertStatusAndBody(t, app.Handler(), "/", http.StatusOK, "GPUFleet")
+	body := responseBody(t, app.Handler(), "/", http.StatusOK)
+	for _, want := range []string{
+		"GPUFleet",
+		"服务设置",
+		"settings-page",
+		"服务端边界",
+		"存储与回收",
+		"Agent 接入",
+		"API 范围",
+		"无命令下发",
+		"gzip JSONL",
+		"HMAC-SHA256",
+		"gpu-trend-tile",
+		"sparkline-wrap",
+		"spark-tooltip",
+		"offline-mask",
+		"data-device-color",
+		"deviceBorderColor",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("built-in dashboard should contain %q", want)
+		}
+	}
+	for _, old := range []string{`class="meter"`, ".meter {"} {
+		if strings.Contains(body, old) {
+			t.Fatalf("built-in dashboard should not contain old meter UI %q", old)
+		}
+	}
 }
 
 func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
@@ -201,13 +228,19 @@ func assertSignedHeartbeat(t *testing.T, handler http.Handler, deviceID, secret 
 
 func assertStatusAndBody(t *testing.T, handler http.Handler, path string, wantStatus int, wantBody string) {
 	t.Helper()
+	body := responseBody(t, handler, path, wantStatus)
+	if !strings.Contains(body, wantBody) {
+		t.Fatalf("%s: expected response to contain %q, got %q", path, wantBody, body)
+	}
+}
+
+func responseBody(t *testing.T, handler http.Handler, path string, wantStatus int) string {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != wantStatus {
 		t.Fatalf("%s: expected status %d, got %d with body %q", path, wantStatus, rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), wantBody) {
-		t.Fatalf("%s: expected response to contain %q, got %q", path, wantBody, rec.Body.String())
-	}
+	return rec.Body.String()
 }

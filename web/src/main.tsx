@@ -51,6 +51,9 @@ const queryClient = new QueryClient();
 type View = 'overview' | 'devices' | 'gpus' | 'settings';
 type AuthState = 'checking' | 'authenticated' | 'anonymous';
 type Theme = 'light' | 'dark';
+type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
+
+const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c54040', '#2f6fbd', '#8a5a00', '#00806a'];
 
 function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
@@ -407,6 +410,7 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
   const util = gpu.utilization_gpu_percent;
   const mem = memoryUsagePercent(item);
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
+  const deviceColor = deviceBorderColor(item.device_id);
   const series = useQuery({
     queryKey: ['gpu-series', item.device_id, gpu.gpu_id, 1],
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
@@ -416,7 +420,13 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
   const points = series.data ?? [];
 
   return (
-    <article className={`fleet-gpu-card ${health.tone}`} data-testid="fleet-gpu-card">
+    <article
+      className={`fleet-gpu-card ${health.tone}`}
+      data-testid="fleet-gpu-card"
+      data-device-id={item.device_id}
+      data-device-color={deviceColor}
+      style={{ '--device-color': deviceColor } as React.CSSProperties}
+    >
       {health.tone === 'offline' && <div className="offline-mask">离线</div>}
       <div className="fleet-card-top">
         <div className="fleet-device-cell">
@@ -448,15 +458,15 @@ function GPUTrendGrid({ item, points, className = 'gpu-trend-grid' }: { item: St
 
   return (
     <div className={className}>
-      <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} />
-      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} />
-      <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} />
-      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} />
+      <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} formatValue={pct} />
+      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} formatValue={pct} />
+      <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} formatValue={temp} />
+      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} formatValue={watts} />
     </div>
   );
 }
 
-function TrendTile({ label, value, caption, values, max, tone }: { label: string; value: string; caption: string; values: Array<number | undefined>; max: number; tone: 'good' | 'warn' | 'bad' | 'accent' }) {
+function TrendTile({ label, value, caption, values, max, tone, formatValue }: { label: string; value: string; caption: string; values: Array<number | undefined>; max: number; tone: TrendTone; formatValue: (value?: number) => string }) {
   const clean = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
   return (
     <div className={`trend-tile ${tone}`} data-testid="gpu-trend-tile">
@@ -467,7 +477,7 @@ function TrendTile({ label, value, caption, values, max, tone }: { label: string
         </div>
         <p>{caption}</p>
       </div>
-      <Sparkline values={clean} max={max} />
+      <Sparkline values={clean} max={max} label={label} formatValue={formatValue} />
     </div>
   );
 }
@@ -505,7 +515,7 @@ function memoryUsagePercent(item: StoredGPU) {
   return item.gpu.memory_total_bytes ? (item.gpu.memory_used_bytes / item.gpu.memory_total_bytes) * 100 : undefined;
 }
 
-function metricTone(value: number | undefined, warnAt: number, badAt: number): 'good' | 'warn' | 'bad' | 'accent' {
+function metricTone(value: number | undefined, warnAt: number, badAt: number): TrendTone {
   if (typeof value !== 'number' || Number.isNaN(value)) return 'accent';
   if (value >= badAt) return 'bad';
   if (value >= warnAt) return 'warn';
@@ -517,26 +527,60 @@ function maxSeries(values: Array<number | undefined>, fallback: number) {
   return clean.length ? Math.max(fallback, ...clean) : fallback;
 }
 
-function Sparkline({ values, max }: { values: number[]; max: number }) {
+function Sparkline({ values, max, label, formatValue }: { values: number[]; max: number; label: string; formatValue: (value?: number) => string }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const width = 180;
   const height = 58;
   const pad = 4;
   const clean = values.length > 0 ? values : [0];
   const cappedMax = Math.max(1, max);
-  const points = clean.map((value, index) => {
+  const pointData = clean.map((value, index) => {
     const x = clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
     const y = height - pad - (Math.max(0, Math.min(cappedMax, value)) / cappedMax) * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    return { value, x, y };
   });
+  const points = pointData.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
   const line = points.join(' ');
   const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
+  const active = hoverIndex === null ? undefined : pointData[hoverIndex];
+
+  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 1;
+    const index = Math.max(0, Math.min(clean.length - 1, Math.round(ratio * (clean.length - 1))));
+    setHoverIndex(index);
+  }
+
   return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="历史趋势图" preserveAspectRatio="none">
-      <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
-      <polygon className="spark-area" points={area} />
-      <polyline className="spark-line" points={line} />
-    </svg>
+    <div className="sparkline-wrap" onPointerMove={onPointerMove} onPointerLeave={() => setHoverIndex(null)}>
+      <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} 历史趋势图`} preserveAspectRatio="none">
+        <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
+        <polygon className="spark-area" points={area} />
+        <polyline className="spark-line" points={line} />
+        {active && (
+          <>
+            <line className="spark-cursor" x1={active.x} x2={active.x} y1={pad} y2={height - pad} />
+            <circle className="spark-point" cx={active.x} cy={active.y} r="3.2" />
+          </>
+        )}
+      </svg>
+      {active && (
+        <div className="spark-tooltip" data-testid="spark-tooltip" style={{ left: `${(active.x / width) * 100}%` }}>
+          <span>{label}</span>
+          <strong>{formatValue(active.value)}</strong>
+          <small>{hoverIndex! + 1}/{clean.length}</small>
+        </div>
+      )}
+    </div>
   );
+}
+
+function deviceBorderColor(deviceID: string) {
+  let hash = 0;
+  for (let index = 0; index < deviceID.length; index += 1) {
+    hash = ((hash << 5) - hash + deviceID.charCodeAt(index)) | 0;
+  }
+  return deviceBorderPalette[Math.abs(hash) % deviceBorderPalette.length];
 }
 
 function pcieLabel(item: StoredGPU) {
@@ -584,6 +628,7 @@ function GPUCard({ item }: { item: StoredGPU }) {
   const gpu = item.gpu;
   const pcie = [gpu.pcie_link_generation ? `Gen ${gpu.pcie_link_generation}` : '', gpu.pcie_link_width ? `x${gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
   const pcieMax = [gpu.pcie_link_generation_max ? `Gen ${gpu.pcie_link_generation_max}` : '', gpu.pcie_link_width_max ? `x${gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
+  const deviceColor = deviceBorderColor(item.device_id);
   const series = useQuery({
     queryKey: ['gpu-series-detail', item.device_id, gpu.gpu_id, 1],
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
@@ -615,7 +660,7 @@ function GPUCard({ item }: { item: StoredGPU }) {
   ].filter(([, value]) => value !== '-');
 
   return (
-    <article className="gpu-card">
+    <article className="gpu-card" data-device-id={item.device_id} data-device-color={deviceColor} style={{ '--device-color': deviceColor } as React.CSSProperties}>
       <div className="card-title">
         <div>
           <h3>{gpu.name || gpu.gpu_id}</h3>

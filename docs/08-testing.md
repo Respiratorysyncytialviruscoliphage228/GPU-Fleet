@@ -52,6 +52,7 @@ cd ..
 - `gpufleet-agent.exe` 构建成功。
 - `npm run build` 通过，Vite 仅提示 JS chunk 大于 500kB。
 - `internal/server` 已有静态面板路由测试，覆盖 React 入口、静态资源、SPA fallback、API 404 和目录越界防护。
+- `internal/server` 已有内置 fallback 面板测试，覆盖服务设置、安全边界、存储回收、Agent 接入、API 范围、GPU 趋势图、离线蒙版，并禁止旧进度条 UI 回归。
 - `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、禁用、启用、轮换密钥、旧密钥失效和新密钥生效。
 
 ### 本机采集验证
@@ -187,19 +188,20 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、深浅主题切换和刷新持久化、设备管理页、移动端总览、移动端 GPU 页、扩展 GPU 字段可见性和移动端无横向溢出。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、深浅主题切换和刷新持久化、设备管理页、服务设置页完整性、移动端总览、移动端 GPU 页、扩展 GPU 字段可见性和移动端无横向溢出。
 
-最新验证使用示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606022211-demo/result.json`：
+最新验证使用示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606022355-tooltip-device-color/result.json`：
 
 ```json
 {
   "ok": true,
   "screenshots": {
-    "desktop_overview": "logs\\frontend-verify-202606022211-demo\\desktop-overview.png",
-    "desktop_overview_dark": "logs\\frontend-verify-202606022211-demo\\desktop-overview-dark.png",
-    "desktop_devices": "logs\\frontend-verify-202606022211-demo\\desktop-devices.png",
-    "mobile_overview": "logs\\frontend-verify-202606022211-demo\\mobile-overview.png",
-    "mobile_gpu": "logs\\frontend-verify-202606022211-demo\\mobile-gpu.png"
+    "desktop_overview": "logs\\frontend-verify-202606022355-tooltip-device-color\\desktop-overview.png",
+    "desktop_overview_dark": "logs\\frontend-verify-202606022355-tooltip-device-color\\desktop-overview-dark.png",
+    "desktop_devices": "logs\\frontend-verify-202606022355-tooltip-device-color\\desktop-devices.png",
+    "desktop_settings": "logs\\frontend-verify-202606022355-tooltip-device-color\\desktop-settings.png",
+    "mobile_overview": "logs\\frontend-verify-202606022355-tooltip-device-color\\mobile-overview.png",
+    "mobile_gpu": "logs\\frontend-verify-202606022355-tooltip-device-color\\mobile-gpu.png"
   },
   "layout": {
     "width": 390,
@@ -209,19 +211,27 @@ cd ..
     "fleetTrendCount": 20,
     "offlineMaskCount": 1,
     "dualDeviceCardCount": 2,
+    "dualDeviceColorMatched": true,
+    "distinctDeviceColorCount": 3,
+    "sparkTooltipCount": 1,
+    "detailTrendCount": 20,
+    "meterCount": 0,
+    "settingsStatCount": 4,
+    "settingsItemCount": 21,
     "theme": "dark",
     "buttonCount": 7
   }
 }
 ```
 
-该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、离线灰色蒙版和同一设备多 GPU 聚合。
+该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、GPU 详情页无旧进度条、设置页运行摘要和设置条目完整性。
 
 当前验证脚本输出：
 
 - `desktop-overview.png`：浅色总览。
 - `desktop-overview-dark.png`：深色总览。
 - `desktop-devices.png`：设备管理。
+- `desktop-settings.png`：服务设置。
 - `mobile-overview.png`：移动端 GPU Fleet 卡片面板。
 - `mobile-gpu.png`：移动端 GPU 详情。
 
@@ -232,4 +242,4 @@ cd ..
 - 服务端可以查询最近 1 小时历史曲线：API 已实现。
 - 设备断网上线状态正确变化：逻辑已实现，仍需补自动化验证。
 - 服务端低磁盘空间时停止指标写入，并保留 800MiB 空闲空间：逻辑已实现。
-- Web 面板在桌面和手机宽度下无明显布局错乱：已通过 Chrome headless 截图和移动端 `scrollWidth` 验证，覆盖深浅主题和 GPU Fleet 卡片面板。
+- Web 面板在桌面和手机宽度下无明显布局错乱：已通过 Chrome headless 截图和移动端 `scrollWidth` 验证，覆盖深浅主题、GPU Fleet 卡片面板、GPU 详情趋势图和服务设置页。

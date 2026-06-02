@@ -317,7 +317,7 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
 .fleet-gpu-card {
   min-width: 0;
   position: relative;
-  border: 1px solid var(--line);
+  border: 2px solid var(--device-color, var(--line));
   border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--panel-soft) 88%, var(--panel)), var(--panel)),
@@ -328,10 +328,10 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
   gap: 12px;
 }
 
-.fleet-gpu-card.good { border-color: color-mix(in srgb, var(--good) 34%, var(--line)); }
-.fleet-gpu-card.warn { border-color: color-mix(in srgb, var(--warn) 38%, var(--line)); }
-.fleet-gpu-card.bad { border-color: color-mix(in srgb, var(--bad) 42%, var(--line)); }
-.fleet-gpu-card.offline { border-color: color-mix(in srgb, var(--offline) 38%, var(--line)); }
+.fleet-gpu-card.good { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--good); }
+.fleet-gpu-card.warn { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--warn); }
+.fleet-gpu-card.bad { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--bad); }
+.fleet-gpu-card.offline { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--offline); }
 
 .fleet-gpu-card.offline > :not(.offline-mask) {
   filter: grayscale(.95);
@@ -415,6 +415,7 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
 
 .trend-tile {
   min-width: 0;
+  position: relative;
   min-height: 148px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -459,10 +460,17 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
   max-width: 96px;
 }
 
-.sparkline {
+.sparkline-wrap {
+  position: relative;
   width: 100%;
   height: 74px;
   align-self: end;
+}
+
+.sparkline {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .spark-grid {
@@ -483,9 +491,55 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
   stroke-linejoin: round;
 }
 
+.spark-cursor {
+  stroke: var(--text);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  opacity: .58;
+}
+
+.spark-point {
+  fill: var(--panel);
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+
+.spark-tooltip {
+  position: absolute;
+  z-index: 4;
+  bottom: 100%;
+  transform: translate(-50%, -6px);
+  min-width: 86px;
+  max-width: 132px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: var(--shadow-soft);
+  padding: 7px 8px;
+  pointer-events: none;
+  display: grid;
+  gap: 2px;
+}
+
+.spark-tooltip span,
+.spark-tooltip small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.spark-tooltip strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.15;
+}
+
 .trend-tile.good .spark-line { stroke: var(--good); }
 .trend-tile.warn .spark-line { stroke: var(--warn); }
 .trend-tile.bad .spark-line { stroke: var(--bad); }
+.trend-tile.good .spark-point { stroke: var(--good); }
+.trend-tile.warn .spark-point { stroke: var(--warn); }
+.trend-tile.bad .spark-point { stroke: var(--bad); }
 .trend-tile.good .spark-area { fill: color-mix(in srgb, var(--good) 20%, transparent); }
 .trend-tile.warn .spark-area { fill: color-mix(in srgb, var(--warn) 20%, transparent); }
 .trend-tile.bad .spark-area { fill: color-mix(in srgb, var(--bad) 20%, transparent); }
@@ -567,7 +621,7 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
 }
 
 .gpu-card {
-  border: 1px solid var(--line);
+  border: 2px solid var(--device-color, var(--line));
   border-radius: 8px;
   padding: 14px;
   background: var(--panel-soft);

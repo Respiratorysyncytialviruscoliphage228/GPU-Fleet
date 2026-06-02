@@ -74,6 +74,7 @@ async function main() {
       await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board'), text('fleet live')], 12000);
       await assertNoConsoleErrors(cdp);
       const fleetStatus = await assertFleetBoard(cdp, { minFleetCards, requireOfflineMask, requireDualDevice });
+      const tooltipStatus = await assertTrendTooltip(cdp);
       await waitForTheme(cdp, 'light');
       logStep('capturing desktop light overview');
       await screenshot(cdp, path.join(outDir, 'desktop-overview.png'));
@@ -199,6 +200,9 @@ async function main() {
           fleetTrendCount: mobileOverviewLayout.trendCount,
           offlineMaskCount: mobileOverviewLayout.offlineMaskCount,
           dualDeviceCardCount: fleetStatus.dualDeviceCardCount,
+          dualDeviceColorMatched: fleetStatus.dualDeviceColorMatched,
+          distinctDeviceColorCount: fleetStatus.distinctDeviceColorCount,
+          sparkTooltipCount: tooltipStatus.count,
           detailTrendCount: layout.detailTrendCount,
           meterCount: layout.meterCount,
           settingsStatCount: settingsLayout.statCount,
@@ -347,6 +351,20 @@ async function assertFleetBoard(cdp, checks) {
     offlineMaskCount: document.querySelectorAll('.offline-mask').length,
     hasFleetBoard: Boolean(document.querySelector('[data-testid="fleet-board"]')),
     hasSparkline: Boolean(document.querySelector('.sparkline .spark-line')),
+    hasSparklineWrap: Boolean(document.querySelector('[data-testid="gpu-trend-tile"] .sparkline-wrap')),
+    deviceColorGroups: Array.from(document.querySelectorAll('[data-testid="fleet-gpu-card"]')).reduce((groups, card) => {
+      const device = card.getAttribute('data-device-id') || card.querySelector('.fleet-device-cell strong')?.textContent?.trim() || '';
+      const color = card.getAttribute('data-device-color') || getComputedStyle(card).borderTopColor || '';
+      if (!device) return groups;
+      const existing = groups.find((item) => item.device === device);
+      if (existing) {
+        existing.colors.push(color);
+        existing.count += 1;
+      } else {
+        groups.push({ device, colors: [color], count: 1 });
+      }
+      return groups;
+    }, []),
     dualDeviceCardCount: Math.max(
       0,
       ...Array.from(document.querySelectorAll('[data-testid="fleet-gpu-card"]')).reduce((counts, card) => {
@@ -357,8 +375,14 @@ async function assertFleetBoard(cdp, checks) {
     ),
     text: document.body.innerText
   }));
+  status.dualDeviceColorMatched = status.deviceColorGroups.some((group) => group.count >= 2 && new Set(group.colors).size === 1);
+  status.sameDeviceColorConsistent = status.deviceColorGroups.every((group) => new Set(group.colors).size === 1);
+  status.distinctDeviceColorCount = new Set(status.deviceColorGroups.map((group) => group.colors[0])).size;
   if (!status.hasFleetBoard || status.cardCount < checks.minFleetCards || status.trendCount < status.cardCount * 4 || !status.hasSparkline) {
     throw new Error(`fleet board missing or empty: ${JSON.stringify(status)}`);
+  }
+  if (!status.hasSparklineWrap) {
+    throw new Error(`fleet trend charts are missing interactive hover wrappers: ${JSON.stringify(status)}`);
   }
   if (checks.requireOfflineMask && status.offlineMaskCount < 1) {
     throw new Error(`offline mask was required but not found: ${JSON.stringify(status)}`);
@@ -366,8 +390,42 @@ async function assertFleetBoard(cdp, checks) {
   if (checks.requireDualDevice && status.dualDeviceCardCount < 2) {
     throw new Error(`same-device multi-GPU cards were required but not found: ${JSON.stringify(status)}`);
   }
+  if (checks.requireDualDevice && !status.dualDeviceColorMatched) {
+    throw new Error(`same-device GPU cards do not share a border color: ${JSON.stringify(status)}`);
+  }
+  if (!status.sameDeviceColorConsistent || status.distinctDeviceColorCount < Math.min(2, status.deviceColorGroups.length)) {
+    throw new Error(`device border colors are not grouped by device: ${JSON.stringify(status)}`);
+  }
   if (!status.text.includes('GPU Fleet') || !status.text.includes('GPU 利用率') || !status.text.includes('显存') || !status.text.includes('功耗')) {
     throw new Error('fleet board does not expose trend chart GPU operation fields');
+  }
+  return status;
+}
+
+async function assertTrendTooltip(cdp) {
+  const target = await evaluate(cdp, () => {
+    const wrap = document.querySelector('[data-testid="gpu-trend-tile"] .sparkline-wrap');
+    if (!wrap) return null;
+    const rect = wrap.getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.72, y: rect.top + rect.height * 0.52 };
+  });
+  if (!target) throw new Error('sparkline wrapper was not found for tooltip verification');
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: target.x, y: target.y, button: 'none' });
+  await delay(200);
+  const status = await evaluate(cdp, () => {
+    const tips = Array.from(document.querySelectorAll('[data-testid="spark-tooltip"]'));
+    const visible = tips.find((tip) => {
+      const rect = tip.getBoundingClientRect();
+      const style = getComputedStyle(tip);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    });
+    return {
+      count: tips.length,
+      visibleText: visible?.textContent || ''
+    };
+  });
+  if (status.count < 1 || !/\d/.test(status.visibleText)) {
+    throw new Error(`sparkline tooltip did not show a numeric value: ${JSON.stringify(status)}`);
   }
   return status;
 }
