@@ -3,13 +3,18 @@ package server
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,7 +27,9 @@ type MetadataStore struct {
 
 type metadataFile struct {
 	CreatedAt      time.Time            `json:"created_at"`
+	SetupComplete  *bool                `json:"setup_complete,omitempty"`
 	Admin          AdminAccount         `json:"admin"`
+	Service        ServiceConfig        `json:"service"`
 	Devices        map[string]*Device   `json:"devices"`
 	AuditEvents    []AuditEvent         `json:"audit_events"`
 	LastProcessSet map[string]time.Time `json:"last_process_set,omitempty"`
@@ -33,6 +40,17 @@ type AdminAccount struct {
 	PasswordHash string `json:"password_hash"`
 	Salt         string `json:"salt"`
 	Iterations   int    `json:"iterations"`
+}
+
+type ServiceConfig struct {
+	Addr           string    `json:"addr"`
+	Port           int       `json:"port"`
+	HTTPS          bool      `json:"https"`
+	CertPath       string    `json:"cert_path,omitempty"`
+	KeyPath        string    `json:"key_path,omitempty"`
+	CertNotAfter   time.Time `json:"cert_not_after,omitempty"`
+	ConfigRevision int       `json:"config_revision"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
 }
 
 type Device struct {
@@ -82,21 +100,20 @@ func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID stri
 	}
 
 	generatedAdminPassword := ""
-	if store.data.Admin.Username == "" {
-		if adminPassword == "" {
-			token, err := randomHex(18)
-			if err != nil {
-				return nil, "", err
-			}
-			adminPassword = token
-			generatedAdminPassword = token
-		}
+	if store.data.Admin.PasswordHash == "" && adminPassword != "" {
 		account, err := NewAdminAccount("admin", adminPassword)
 		if err != nil {
 			return nil, "", err
 		}
 		store.data.Admin = account
 		store.addAuditLocked("admin_created", "created initial admin account")
+	}
+	if store.data.Admin.Username == "" && store.data.Admin.PasswordHash != "" {
+		store.data.Admin.Username = "admin"
+	}
+	if store.data.SetupComplete == nil {
+		complete := store.data.Admin.PasswordHash != ""
+		store.data.SetupComplete = &complete
 	}
 
 	if bootstrapDeviceID != "" && bootstrapSecret != "" {
@@ -116,6 +133,257 @@ func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID stri
 		return nil, "", err
 	}
 	return store, generatedAdminPassword, nil
+}
+
+func (s *MetadataStore) EnsureServiceConfig(addr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := s.ensureServiceConfigLocked(addr)
+	if !changed {
+		return nil
+	}
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) ensureServiceConfigLocked(addr string) bool {
+	changed := false
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
+	if s.data.Service.Addr == "" {
+		s.data.Service.Addr = addr
+		changed = true
+	}
+	if s.data.Service.Port == 0 {
+		if port, ok := portFromAddr(s.data.Service.Addr); ok {
+			s.data.Service.Port = port
+			changed = true
+		}
+	}
+	if s.data.Service.UpdatedAt.IsZero() {
+		s.data.Service.UpdatedAt = time.Now().UTC()
+		changed = true
+	}
+	return changed
+}
+
+func (s *MetadataStore) SetupComplete() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.setupCompleteLocked()
+}
+
+func (s *MetadataStore) setupCompleteLocked() bool {
+	return s.data.SetupComplete != nil && *s.data.SetupComplete
+}
+
+func (s *MetadataStore) HasAdminPassword() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data.Admin.PasswordHash != ""
+}
+
+func (s *MetadataStore) ServiceConfig() ServiceConfig {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data.Service
+}
+
+func (s *MetadataStore) CertificateFiles() (string, string, bool) {
+	s.mu.Lock()
+	config := s.data.Service
+	s.mu.Unlock()
+	if !config.HTTPS || config.CertPath == "" || config.KeyPath == "" {
+		return "", "", false
+	}
+	return s.resolveDataPath(config.CertPath), s.resolveDataPath(config.KeyPath), true
+}
+
+func (s *MetadataStore) CompleteInitialSetup(password string, port int, certPEM, keyPEM []byte) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Admin.PasswordHash != "" || s.setupCompleteLocked() {
+		return ServiceConfig{}, errors.New("setup already completed")
+	}
+	if err := validatePassword(password); err != nil {
+		return ServiceConfig{}, err
+	}
+	if port != 0 {
+		if err := validatePort(port); err != nil {
+			return ServiceConfig{}, err
+		}
+	}
+	account, err := NewAdminAccount("admin", password)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	s.data.Admin = account
+	s.updatePortLocked(port)
+	if len(certPEM) > 0 || len(keyPEM) > 0 {
+		if err := s.saveCertificateLocked(certPEM, keyPEM); err != nil {
+			return ServiceConfig{}, err
+		}
+	}
+	complete := true
+	s.data.SetupComplete = &complete
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("setup_completed", "completed initial setup")
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) ReconfigureSetup(password string, port int, certPEM, keyPEM []byte) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if password != "" {
+		if err := validatePassword(password); err != nil {
+			return ServiceConfig{}, err
+		}
+		account, err := NewAdminAccount("admin", password)
+		if err != nil {
+			return ServiceConfig{}, err
+		}
+		s.data.Admin = account
+		s.addAuditLocked("admin_password_replaced", "replaced admin password from setup wizard")
+	}
+	if port != 0 {
+		if err := validatePort(port); err != nil {
+			return ServiceConfig{}, err
+		}
+		s.updatePortLocked(port)
+	}
+	if len(certPEM) > 0 || len(keyPEM) > 0 {
+		if err := s.saveCertificateLocked(certPEM, keyPEM); err != nil {
+			return ServiceConfig{}, err
+		}
+		s.addAuditLocked("service_certificate_uploaded", "uploaded HTTPS certificate from setup wizard")
+	}
+	complete := true
+	s.data.SetupComplete = &complete
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("setup_reconfigured", "applied setup wizard configuration")
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdatePassword(currentPassword, nextPassword string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Admin.PasswordHash == "" {
+		return errors.New("admin password is not configured")
+	}
+	if !verifyPassword(currentPassword, s.data.Admin) {
+		return errors.New("current password is incorrect")
+	}
+	if err := validatePassword(nextPassword); err != nil {
+		return err
+	}
+	account, err := NewAdminAccount("admin", nextPassword)
+	if err != nil {
+		return err
+	}
+	s.data.Admin = account
+	s.addAuditLocked("admin_password_changed", "changed admin password")
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) ReplacePassword(nextPassword string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := validatePassword(nextPassword); err != nil {
+		return err
+	}
+	account, err := NewAdminAccount("admin", nextPassword)
+	if err != nil {
+		return err
+	}
+	s.data.Admin = account
+	complete := true
+	s.data.SetupComplete = &complete
+	s.addAuditLocked("admin_password_replaced", "replaced admin password from setup wizard")
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateServicePort(port int) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := validatePort(port); err != nil {
+		return ServiceConfig{}, err
+	}
+	s.updatePortLocked(port)
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("service_port_changed", fmt.Sprintf("configured service port %d", port))
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) SaveCertificate(certPEM, keyPEM []byte) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.saveCertificateLocked(certPEM, keyPEM); err != nil {
+		return ServiceConfig{}, err
+	}
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("service_certificate_uploaded", "uploaded HTTPS certificate")
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) saveCertificateLocked(certPEM, keyPEM []byte) error {
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return errors.New("certificate and private key are required")
+	}
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("invalid certificate pair: %w", err)
+	}
+	if len(pair.Certificate) == 0 {
+		return errors.New("certificate is empty")
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("invalid certificate: %w", err)
+	}
+	certDir := s.resolveDataPath("certs")
+	if err := os.MkdirAll(certDir, 0700); err != nil {
+		return err
+	}
+	certPath := filepath.Join(certDir, "server.crt")
+	keyPath := filepath.Join(certDir, "server.key")
+	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return err
+	}
+	s.data.Service.HTTPS = true
+	s.data.Service.CertPath = filepath.ToSlash(filepath.Join("certs", "server.crt"))
+	s.data.Service.KeyPath = filepath.ToSlash(filepath.Join("certs", "server.key"))
+	s.data.Service.CertNotAfter = leaf.NotAfter.UTC()
+	return nil
+}
+
+func (s *MetadataStore) updatePortLocked(port int) {
+	if port <= 0 {
+		return
+	}
+	if s.data.Service.Addr == "" {
+		s.data.Service.Addr = fmt.Sprintf("127.0.0.1:%d", port)
+	}
+	host, _, err := splitHostPort(s.data.Service.Addr)
+	if err != nil {
+		host = "127.0.0.1"
+	}
+	s.data.Service.Port = port
+	s.data.Service.Addr = fmt.Sprintf("%s:%d", host, port)
+}
+
+func (s *MetadataStore) bumpServiceConfigLocked() {
+	s.data.Service.ConfigRevision++
+	s.data.Service.UpdatedAt = time.Now().UTC()
+}
+
+func (s *MetadataStore) resolveDataPath(rel string) string {
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	return filepath.Join(filepath.Dir(s.path), filepath.FromSlash(rel))
 }
 
 func (s *MetadataStore) load() error {
@@ -253,7 +521,7 @@ func (s *MetadataStore) VerifyAdmin(username, password string) bool {
 	s.mu.Lock()
 	account := s.data.Admin
 	s.mu.Unlock()
-	if username != account.Username || account.PasswordHash == "" {
+	if account.PasswordHash == "" {
 		return false
 	}
 	return verifyPassword(password, account)
@@ -315,4 +583,42 @@ func randomHex(bytes int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+	return nil
+}
+
+func validatePort(port int) error {
+	if port < 1 || port > 65535 {
+		return errors.New("port must be between 1 and 65535")
+	}
+	return nil
+}
+
+func portFromAddr(addr string) (int, bool) {
+	_, rawPort, err := splitHostPort(addr)
+	if err != nil {
+		return 0, false
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, false
+	}
+	return port, true
+}
+
+func splitHostPort(addr string) (string, string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err == nil {
+		return host, port, nil
+	}
+	if strings.Count(addr, ":") == 1 && !strings.HasPrefix(addr, "[") {
+		parts := strings.SplitN(addr, ":", 2)
+		return parts[0], parts[1], nil
+	}
+	return "", "", err
 }

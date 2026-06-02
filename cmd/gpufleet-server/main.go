@@ -23,6 +23,12 @@ func main() {
 	flag.IntVar(&minFreeMB, "min-free-mb", envInt("GPUFLEET_MIN_FREE_MB", 800), "minimum free disk space before rejecting metrics")
 	flag.IntVar(&retentionDays, "retention-days", envInt("GPUFLEET_RETENTION_DAYS", 30), "compressed metric retention days")
 	flag.Parse()
+	cfg.AddrExplicit = os.Getenv("GPUFLEET_ADDR") != ""
+	flag.Visit(func(item *flag.Flag) {
+		if item.Name == "addr" {
+			cfg.AddrExplicit = true
+		}
+	})
 
 	cfg.MinFreeBytes = uint64(minFreeMB) * 1024 * 1024
 	cfg.Retention = time.Duration(retentionDays) * 24 * time.Hour
@@ -35,7 +41,7 @@ func main() {
 	if generatedPassword != "" {
 		logger.Printf("generated admin password: %s", generatedPassword)
 	}
-	logger.Printf("listening on http://%s", cfg.Addr)
+	logger.Printf("listening on %s://%s", app.Scheme(), app.Addr())
 	logger.Printf("data dir: %s, min free: %d MiB, retention: %d days", cfg.DataDir, minFreeMB, retentionDays)
 	if err := app.ListenAndServe(); err != nil {
 		logger.Fatal(err)

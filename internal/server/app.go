@@ -1,6 +1,7 @@
 package server
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 
 type Config struct {
 	Addr              string
+	AddrExplicit      bool
 	DataDir           string
 	MinFreeBytes      uint64
 	Retention         time.Duration
@@ -42,6 +44,7 @@ type App struct {
 	loginRate *RateLimiter
 	agentRate *RateLimiter
 	logger    *log.Logger
+	scheme    string
 }
 
 func NewApp(config Config, logger *log.Logger) (*App, string, error) {
@@ -73,6 +76,14 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if !config.AddrExplicit {
+		if saved := meta.ServiceConfig(); saved.Addr != "" {
+			config.Addr = saved.Addr
+		}
+	}
+	if err := meta.EnsureServiceConfig(config.Addr); err != nil {
+		return nil, "", err
+	}
 	metrics, err := NewMetricsStore(filepath.Join(config.DataDir, "metrics"), config.MinFreeBytes, config.Retention)
 	if err != nil {
 		return nil, "", err
@@ -80,6 +91,15 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	processes, err := NewProcessStore(filepath.Join(config.DataDir, "processes.json"))
 	if err != nil {
 		return nil, "", err
+	}
+
+	scheme := "http"
+	if certFile, keyFile, ok := meta.CertificateFiles(); ok && meta.SetupComplete() {
+		if _, err := os.Stat(certFile); err == nil {
+			if _, err := os.Stat(keyFile); err == nil {
+				scheme = "https"
+			}
+		}
 	}
 
 	return &App{
@@ -92,12 +112,15 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		loginRate: NewRateLimiter(10, time.Minute),
 		agentRate: NewRateLimiter(240, time.Minute),
 		logger:    logger,
+		scheme:    scheme,
 	}, generatedPassword, nil
 }
 
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", a.handleIndex)
+	mux.HandleFunc("/api/v1/setup/status", a.handleSetupStatus)
+	mux.HandleFunc("/api/v1/setup/apply", a.handleSetupApply)
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("/api/v1/overview", a.requireSession(a.handleOverview))
@@ -105,6 +128,12 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/gpus/", a.requireSession(a.handleGPUSeries))
 	mux.HandleFunc("/api/v1/stats/gpu-utilization", a.requireSession(a.handleGPUStats))
 	mux.HandleFunc("/api/v1/processes/latest", a.requireSession(a.handleLatestProcesses))
+	mux.HandleFunc("/api/v1/admin/setup/reopen", a.requireSession(a.handleSetupReopen))
+	mux.HandleFunc("/api/v1/admin/setup/apply", a.requireSession(a.handleSetupApplyAuthenticated))
+	mux.HandleFunc("/api/v1/admin/password", a.requireSession(a.handleAdminPassword))
+	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
+	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
+	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
 	mux.HandleFunc("/api/v1/admin/devices/", a.requireSession(a.handleAdminDeviceAction))
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)
@@ -119,7 +148,26 @@ func (a *App) ListenAndServe() error {
 		Handler:           a.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	if a.scheme == "https" {
+		certFile, keyFile, ok := a.meta.CertificateFiles()
+		if !ok {
+			return errors.New("HTTPS is enabled but certificate files are missing")
+		}
+		if _, err := os.Stat(certFile); err == nil {
+			if _, err := os.Stat(keyFile); err == nil {
+				return server.ListenAndServeTLS(certFile, keyFile)
+			}
+		}
+	}
 	return server.ListenAndServe()
+}
+
+func (a *App) Scheme() string {
+	return a.scheme
+}
+
+func (a *App) Addr() string {
+	return a.config.Addr
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +251,217 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func (a *App) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, a.setupStatus(r))
+}
+
+func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if a.meta.HasAdminPassword() || a.meta.SetupComplete() {
+		writeError(w, http.StatusForbidden, "setup is already completed")
+		return
+	}
+	var body struct {
+		Password       string `json:"password"`
+		Port           int    `json:"port"`
+		CertificatePEM string `json:"certificate_pem"`
+		PrivateKeyPEM  string `json:"private_key_pem"`
+	}
+	if err := decodeJSON(r, &body, 4<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.CompleteInitialSetup(
+		body.Password,
+		body.Port,
+		[]byte(strings.TrimSpace(body.CertificatePEM)),
+		[]byte(strings.TrimSpace(body.PrivateKeyPEM)),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": a.restartRequired(config),
+	})
+}
+
+func (a *App) handleSetupReopen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	_ = a.meta.AddAudit("setup_reopened", "reopened setup wizard from settings")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "setup": a.setupStatus(r)})
+}
+
+func (a *App) handleSetupApplyAuthenticated(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Password       string `json:"password"`
+		Port           int    `json:"port"`
+		CertificatePEM string `json:"certificate_pem"`
+		PrivateKeyPEM  string `json:"private_key_pem"`
+	}
+	if err := decodeJSON(r, &body, 4<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.ReconfigureSetup(
+		body.Password,
+		body.Port,
+		[]byte(strings.TrimSpace(body.CertificatePEM)),
+		[]byte(strings.TrimSpace(body.PrivateKeyPEM)),
+	)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": a.restartRequired(config),
+	})
+}
+
+func (a *App) handleAdminPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NextPassword    string `json:"next_password"`
+	}
+	if err := decodeJSON(r, &body, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := a.meta.UpdatePassword(body.CurrentPassword, body.NextPassword); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Port int `json:"port"`
+	}
+	if err := decodeJSON(r, &body, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.UpdateServicePort(body.Port)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": a.restartRequired(config),
+	})
+}
+
+func (a *App) handleAdminCertificate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		CertificatePEM string `json:"certificate_pem"`
+		PrivateKeyPEM  string `json:"private_key_pem"`
+	}
+	if err := decodeJSON(r, &body, 4<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.SaveCertificate([]byte(strings.TrimSpace(body.CertificatePEM)), []byte(strings.TrimSpace(body.PrivateKeyPEM)))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": a.restartRequired(config),
+	})
+}
+
+func (a *App) handleDatabaseDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "gpufleet-data-"+time.Now().UTC().Format("20060102-150405")+".zip"))
+	archive := zip.NewWriter(w)
+	defer archive.Close()
+
+	dataRoot, err := filepath.Abs(a.config.DataDir)
+	if err != nil {
+		a.logger.Printf("database download failed: %v", err)
+		return
+	}
+	err = filepath.WalkDir(dataRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dataRoot, path)
+		if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if relSlash != "metadata.json" && relSlash != "processes.json" && !strings.HasPrefix(relSlash, "metrics/") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = relSlash
+		header.Method = zip.Deflate
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(writer, file)
+		return err
+	})
+	if err != nil {
+		a.logger.Printf("database download failed: %v", err)
+	}
+}
+
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	a.sessions.Clear(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -275,6 +534,8 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		LatestProcesses:    a.processes.Latest("", ""),
 		RetentionHours:     int(a.config.Retention.Hours()),
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
+		SetupComplete:      a.meta.SetupComplete(),
+		Service:            a.serviceStatus(r),
 	})
 }
 
@@ -634,6 +895,59 @@ func parseHours(r *http.Request, fallback int) int {
 	return hours
 }
 
+func (a *App) setupStatus(r *http.Request) setupStatusResponse {
+	return setupStatusResponse{
+		SetupRequired: !a.meta.HasAdminPassword(),
+		SetupComplete: a.meta.SetupComplete(),
+		Service:       a.serviceStatus(r),
+	}
+}
+
+func (a *App) serviceStatus(r *http.Request) serviceStatus {
+	return a.serviceStatusFromConfig(a.meta.ServiceConfig(), r)
+}
+
+func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) serviceStatus {
+	currentPort, _ := portFromAddr(a.config.Addr)
+	if config.Port == 0 {
+		config.Port = currentPort
+	}
+	if config.Addr == "" {
+		config.Addr = a.config.Addr
+	}
+	status := serviceStatus{
+		CurrentAddr:       a.config.Addr,
+		CurrentScheme:     a.Scheme(),
+		ConfiguredAddr:    config.Addr,
+		ConfiguredPort:    config.Port,
+		HTTPSEnabled:      config.HTTPS,
+		CertNotAfter:      config.CertNotAfter,
+		ConfigRevision:    config.ConfigRevision,
+		UpdatedAt:         config.UpdatedAt,
+		RestartRequired:   a.restartRequired(config),
+		FirstStartupHTTP:  a.Scheme() == "http" && !a.meta.SetupComplete(),
+		ManagementBaseURL: "",
+	}
+	host := "127.0.0.1"
+	if r != nil && r.Host != "" {
+		host = r.Host
+		if rawHost, _, err := splitHostPort(r.Host); err == nil && rawHost != "" {
+			host = rawHost
+		}
+	}
+	if config.Port > 0 {
+		status.ManagementBaseURL = fmt.Sprintf("%s://%s:%d", a.Scheme(), host, config.Port)
+	}
+	return status
+}
+
+func (a *App) restartRequired(config ServiceConfig) bool {
+	currentPort, currentPortOK := portFromAddr(a.config.Addr)
+	portChanged := currentPortOK && config.Port > 0 && config.Port != currentPort
+	schemeChanged := config.HTTPS != (a.Scheme() == "https")
+	return portChanged || schemeChanged
+}
+
 type overviewResponse struct {
 	ServerTime         time.Time               `json:"server_time"`
 	DeviceCount        int                     `json:"device_count"`
@@ -649,6 +963,28 @@ type overviewResponse struct {
 	LatestProcesses    []StoredProcessSnapshot `json:"latest_processes"`
 	RetentionHours     int                     `json:"retention_hours"`
 	MinFreeSpaceBytes  uint64                  `json:"min_free_space_bytes"`
+	SetupComplete      bool                    `json:"setup_complete"`
+	Service            serviceStatus           `json:"service"`
+}
+
+type setupStatusResponse struct {
+	SetupRequired bool          `json:"setup_required"`
+	SetupComplete bool          `json:"setup_complete"`
+	Service       serviceStatus `json:"service"`
+}
+
+type serviceStatus struct {
+	CurrentAddr       string    `json:"current_addr"`
+	CurrentScheme     string    `json:"current_scheme"`
+	ConfiguredAddr    string    `json:"configured_addr"`
+	ConfiguredPort    int       `json:"configured_port"`
+	HTTPSEnabled      bool      `json:"https_enabled"`
+	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
+	ConfigRevision    int       `json:"config_revision"`
+	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+	RestartRequired   bool      `json:"restart_required"`
+	FirstStartupHTTP  bool      `json:"first_startup_http"`
+	ManagementBaseURL string    `json:"management_base_url,omitempty"`
 }
 
 type deviceView struct {
