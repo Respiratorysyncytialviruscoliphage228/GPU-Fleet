@@ -130,14 +130,18 @@ async function main() {
       });
       await cdp.send('Page.reload', { ignoreCache: true });
       await waitForLoad(cdp);
-      await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board')], 12000);
+      await waitForText(cdp, [text('GPU resource overview'), text('fleet board')], 12000);
       await screenshot(cdp, path.join(outDir, 'mobile-overview.png'));
       const mobileOverviewLayout = await evaluate(cdp, () => ({
         width: window.innerWidth,
+        height: window.innerHeight,
         scrollWidth: document.documentElement.scrollWidth,
         fleetCardCount: document.querySelectorAll('[data-testid="fleet-gpu-card"]').length,
         trendCount: document.querySelectorAll('[data-testid="gpu-trend-tile"]').length,
         offlineMaskCount: document.querySelectorAll('.offline-mask').length,
+        navButtonCount: document.querySelectorAll('.sidebar nav button').length,
+        navPosition: getComputedStyle(document.querySelector('.sidebar')).position,
+        navBottom: Math.round(document.querySelector('.sidebar').getBoundingClientRect().bottom),
         theme: document.documentElement.dataset.theme || '',
         bodyText: document.body.innerText
       }));
@@ -146,6 +150,9 @@ async function main() {
       }
       if (mobileOverviewLayout.fleetCardCount < 1) {
         throw new Error('fleet overview GPU cards were not rendered in mobile browser');
+      }
+      if (mobileOverviewLayout.navButtonCount < 4 || mobileOverviewLayout.navPosition !== 'fixed' || Math.abs(mobileOverviewLayout.navBottom - mobileOverviewLayout.height) > 2) {
+        throw new Error(`mobile bottom navigation is not fixed at the viewport bottom: ${JSON.stringify(mobileOverviewLayout)}`);
       }
 
       logStep('checking mobile GPU view');
@@ -203,6 +210,8 @@ async function main() {
           fleetCardCount: mobileOverviewLayout.fleetCardCount,
           fleetTrendCount: mobileOverviewLayout.trendCount,
           offlineMaskCount: mobileOverviewLayout.offlineMaskCount,
+          mobileNavButtonCount: mobileOverviewLayout.navButtonCount,
+          mobileNavPosition: mobileOverviewLayout.navPosition,
           dualDeviceCardCount: fleetStatus.dualDeviceCardCount,
           dualDeviceColorMatched: fleetStatus.dualDeviceColorMatched,
           distinctDeviceColorCount: fleetStatus.distinctDeviceColorCount,
@@ -441,12 +450,14 @@ async function visibleText(cdp) {
 
 async function waitForText(cdp, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  let lastBodyText = '';
   while (Date.now() < deadline) {
     const bodyText = await visibleText(cdp);
+    lastBodyText = bodyText;
     if (expected.every((item) => bodyText.includes(item))) return bodyText;
     await delay(150);
   }
-  throw new Error(`timed out waiting for text: ${expected.join(', ')}`);
+  throw new Error(`timed out waiting for text: ${expected.join(', ')}. Current text: ${lastBodyText.slice(0, 800)}`);
 }
 
 async function waitForLoad(cdp) {

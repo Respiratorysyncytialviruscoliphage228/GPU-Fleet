@@ -472,11 +472,12 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
         {data?.disk.status === 'critical' && <div className="banner danger">磁盘空间低于保护阈值，服务端已拒绝新指标写入。</div>}
         {overview.error && <div className="banner danger">{overview.error.message}</div>}
 
-        {view === 'overview' && <OverviewPage data={data} statRows={statRows} theme={theme} />}
-        {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} memoryPct={memoryPct} theme={theme} />}
-
-        {view === 'devices' && <DeviceAdminPanel data={data} />}
-        {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
+        <div className="view-shell" key={view} data-view={view}>
+          {view === 'overview' && <OverviewPage data={data} statRows={statRows} theme={theme} />}
+          {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} memoryPct={memoryPct} theme={theme} />}
+          {view === 'devices' && <DeviceAdminPanel data={data} />}
+          {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
+        </div>
       </main>
     </div>
   );
