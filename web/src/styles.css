@@ -1161,6 +1161,10 @@ input:focus {
     var(--panel);
 }
 
+.release-card {
+  grid-template-rows: auto auto minmax(0, auto) auto;
+}
+
 .project-logo {
   padding: 0;
   overflow: hidden;
@@ -1217,6 +1221,74 @@ input:focus {
 
 .project-meta a:hover {
   text-decoration: underline;
+}
+
+.changelog-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.changelog-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.changelog-entry {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.changelog-entry > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.changelog-entry > div:first-child strong {
+  line-height: 1.1;
+}
+
+.changelog-entry > div:first-child span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.changelog-group {
+  display: grid;
+  gap: 5px;
+}
+
+.changelog-group > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.changelog-group ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.changelog-group li {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .settings-form {

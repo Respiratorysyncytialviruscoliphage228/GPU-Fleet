@@ -7,6 +7,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import {
   Activity,
+  BookOpenText,
   CheckCircle2,
   Clipboard,
   Cpu,
@@ -44,11 +45,13 @@ import {
   getOverview,
   getSetupStatus,
   getStats,
+  getVersion,
   GPUSeriesPoint,
   GPUStats,
   login,
   logout,
   Overview,
+  ReleaseInfo,
   reopenSetup,
   rotateDeviceSecret,
   ServiceStatus,
@@ -1080,6 +1083,11 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStatus, setWizardStatus] = useState<SetupStatus>();
   const [message, setMessage] = useState('');
+  const release = useQuery({
+    queryKey: ['version'],
+    queryFn: getVersion,
+    staleTime: 5 * 60 * 1000
+  });
 
   async function refreshOverview() {
     await query.invalidateQueries({ queryKey: ['overview'] });
@@ -1119,7 +1127,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <PortSettings service={service} onDone={refreshOverview} />
         <CertificateSettings service={service} onDone={refreshOverview} />
         <DatabaseSettings data={data} />
-        <ProjectInfoSettings />
+        <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         <article className="panel setting-operation">
           <div className="operation-head">
             <div className="operation-icon"><Settings size={18} /></div>
@@ -1154,37 +1162,84 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
   );
 }
 
-function ProjectInfoSettings() {
+function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {
+  const latest = release?.changelog?.[0];
+  const versionText = release?.version ? `v${release.version}` : loading ? '加载中' : '-';
+  const commitText = release?.commit && release.commit !== 'dev' ? release.commit : 'dev';
+
   return (
-    <article className="panel setting-operation project-card" data-testid="settings-project">
+    <article className="panel setting-operation project-card release-card" data-testid="settings-project">
       <div className="operation-head">
         <div className="operation-icon project-logo">
           <img src="/brand/gpufleet-logo.svg" alt="" />
         </div>
         <div>
-          <h2>项目信息</h2>
-          <p>GPUFleet 开源仓库</p>
+          <h2>版本与变更</h2>
+          <p>{release ? `${release.product} ${versionText}` : 'GPUFleet 发布信息'}</p>
         </div>
       </div>
       <div className="project-meta">
         <div>
           <span>作者</span>
-          <strong>{repositoryOwner}</strong>
+          <strong>{release?.author ?? repositoryOwner}</strong>
         </div>
         <div>
-          <span>仓库</span>
-          <strong>{repositoryName}</strong>
+          <span>版本</span>
+          <strong>{versionText}</strong>
+        </div>
+        <div>
+          <span>提交</span>
+          <strong>{commitText}</strong>
+        </div>
+        <div>
+          <span>构建时间</span>
+          <strong>{release?.build_time ? fmtDateTime(release.build_time) : '-'}</strong>
         </div>
         <div className="project-url">
           <span>仓库地址</span>
-          <a href={repositoryURL} target="_blank" rel="noreferrer">{repositoryURL}</a>
+          <a href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">{release?.repository ?? repositoryURL}</a>
         </div>
       </div>
-      <a className="secondary action-button" href={repositoryURL} target="_blank" rel="noreferrer">
+      <div className="changelog-panel" data-testid="settings-changelog">
+        <div className="changelog-head">
+          <BookOpenText size={16} />
+          <span>最近变更</span>
+        </div>
+        {latest ? <ChangelogEntryView entry={latest} /> : <p>{error || '正在读取版本信息'}</p>}
+      </div>
+      <a className="secondary action-button" href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">
         <Github size={16} />
         打开 GitHub
       </a>
     </article>
+  );
+}
+
+function ChangelogEntryView({ entry }: { entry: NonNullable<ReleaseInfo['changelog']>[number] }) {
+  return (
+    <div className="changelog-entry">
+      <div>
+        <strong>v{entry.version}</strong>
+        <span>{entry.date}</span>
+      </div>
+      <p>{entry.title}</p>
+      <ChangelogList label="新增" items={entry.added} />
+      <ChangelogList label="变更" items={entry.changed} />
+      <ChangelogList label="安全" items={entry.security} />
+      <ChangelogList label="修复" items={entry.fixed} />
+    </div>
+  );
+}
+
+function ChangelogList({ label, items }: { label: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div className="changelog-group">
+      <span>{label}</span>
+      <ul>
+        {items.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </div>
   );
 }
 

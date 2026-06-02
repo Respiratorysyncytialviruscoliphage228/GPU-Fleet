@@ -100,7 +100,7 @@ async function main() {
 
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('setup wizard'), text('project info'), 'stlin256', 'https://github.com/stlin256/GPUFleet'], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.0', 'stlin256', 'https://github.com/stlin256/GPUFleet'], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
         operationCount: document.querySelectorAll('.setting-operation').length,
@@ -109,6 +109,7 @@ async function main() {
         certPanel: Boolean(document.querySelector('[data-testid="settings-certificate"]')),
         databasePanel: Boolean(document.querySelector('[data-testid="settings-database"]')),
         projectPanel: Boolean(document.querySelector('[data-testid="settings-project"]')),
+        changelogPanel: Boolean(document.querySelector('[data-testid="settings-changelog"]')),
         brandLogoCount: document.querySelectorAll('.brand-mark').length,
         databaseLink: document.querySelector('[data-testid="settings-database"] a')?.getAttribute('href') || '',
         projectLink: document.querySelector('[data-testid="settings-project"] a[href="https://github.com/stlin256/GPUFleet"]')?.getAttribute('href') || '',
@@ -118,11 +119,11 @@ async function main() {
       if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 6) {
         throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
       }
-      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.projectPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPUFleet') {
+      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPUFleet') {
         throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
-      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('项目信息') || !settingsLayout.bodyText.includes('stlin256')) {
-        throw new Error(`brand or repository attribution is missing: ${JSON.stringify(settingsLayout)}`);
+      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes('v0.1.0') || !settingsLayout.bodyText.includes('stlin256')) {
+        throw new Error(`release, brand, or repository attribution is missing: ${JSON.stringify(settingsLayout)}`);
       }
       await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));
 
@@ -226,6 +227,7 @@ async function main() {
           meterCount: layout.meterCount,
           settingsStatCount: settingsLayout.statCount,
           settingsOperationCount: settingsLayout.operationCount,
+          settingsChangelogPanel: settingsLayout.changelogPanel,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -273,7 +275,8 @@ function text(id) {
     'https certificate': '\u0048\u0054\u0054\u0050\u0053 \u8bc1\u4e66',
     'database download': '\u6570\u636e\u5e93\u4e0b\u8f7d',
     'setup wizard': '\u914d\u7f6e\u5f15\u5bfc',
-    'project info': '\u9879\u76ee\u4fe1\u606f',
+    'release info': '\u7248\u672c\u4e0e\u53d8\u66f4',
+    'latest changelog': '\u6700\u8fd1\u53d8\u66f4',
     overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
     gpu: '\u0047\u0050\u0055',

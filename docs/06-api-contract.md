@@ -173,6 +173,7 @@ GET  /api/v1/setup/status
 POST /api/v1/setup/apply
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+GET  /api/v1/version
 GET  /api/v1/overview
 GET  /api/v1/devices
 GET  /api/v1/gpus/{gpu_id}/series
@@ -215,6 +216,41 @@ GET  /api/v1/alerts
   "retry_after_seconds": 300
 }
 ```
+
+### 版本与变更记录
+
+```text
+GET /api/v1/version
+```
+
+该接口需要已登录的 Web Cookie Session。版本信息不公开暴露，避免未认证访问者直接获取服务端版本指纹。
+
+响应：
+
+```json
+{
+  "product": "GPUFleet",
+  "version": "0.1.0",
+  "commit": "dev",
+  "author": "stlin256",
+  "repository": "https://github.com/stlin256/GPUFleet",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "date": "2026-06-03",
+      "title": "MVP 预览版：安全的多设备 GPU 可观测面板",
+      "added": [
+        "支持 Windows 和 Linux NVIDIA GPU 设备的客户端-服务端架构。"
+      ],
+      "security": [
+        "Agent 上报使用 HMAC 签名并带 nonce 重放保护。"
+      ]
+    }
+  ]
+}
+```
+
+服务端和 Agent 同时支持 `-version` 命令行参数，发布构建可通过 Go `-ldflags` 注入 `commit` 和 `build_time`。
 
 ### 首次配置和服务设置
 

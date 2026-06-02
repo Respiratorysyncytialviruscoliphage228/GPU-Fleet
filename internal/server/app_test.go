@@ -21,6 +21,7 @@ import (
 
 	"gpufleet/internal/auth"
 	"gpufleet/internal/model"
+	"gpufleet/internal/version"
 )
 
 func TestStaticDashboardRouting(t *testing.T) {
@@ -75,7 +76,10 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		"端口配置",
 		"HTTPS 证书",
 		"数据库下载",
-		"项目信息",
+		"版本与变更",
+		"v0.1.0",
+		"最近变更",
+		"MVP 预览版",
 		"stlin256",
 		"https://github.com/stlin256/GPUFleet",
 		"配置引导",
@@ -97,6 +101,23 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		if strings.Contains(body, old) {
 			t.Fatalf("built-in dashboard should not contain old meter UI %q", old)
 		}
+	}
+}
+
+func TestVersionAPIRequiresSession(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+
+	doJSON(t, handler, http.MethodGet, "/api/v1/version", nil, nil, http.StatusUnauthorized, nil)
+
+	var info version.ReleaseInfo
+	doJSON(t, handler, http.MethodGet, "/api/v1/version", nil, loginCookie(t, handler), http.StatusOK, &info)
+	if info.Product != version.Product || info.Version != "0.1.0" || info.Author != "stlin256" || info.Repository != "https://github.com/stlin256/GPUFleet" {
+		t.Fatalf("unexpected version response: %+v", info)
+	}
+	if len(info.Changelog) == 0 || info.Changelog[0].Version != info.Version || info.Changelog[0].Title == "" {
+		t.Fatalf("expected current changelog entry in version response: %+v", info.Changelog)
 	}
 }
 

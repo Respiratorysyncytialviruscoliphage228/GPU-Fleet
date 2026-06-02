@@ -1,8 +1,12 @@
 package model
 
-import "time"
+import (
+	"time"
 
-const AgentVersion = "0.1.0"
+	"gpufleet/internal/version"
+)
+
+var AgentVersion = version.Version
 
 type Heartbeat struct {
 	AgentVersion string    `json:"agent_version"`

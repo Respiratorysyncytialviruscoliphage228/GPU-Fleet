@@ -20,6 +20,7 @@ import (
 
 	"gpufleet/internal/auth"
 	"gpufleet/internal/model"
+	"gpufleet/internal/version"
 )
 
 type Config struct {
@@ -127,6 +128,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/setup/apply", a.handleSetupApply)
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
+	mux.HandleFunc("/api/v1/version", a.requireSession(a.handleVersion))
 	mux.HandleFunc("/api/v1/overview", a.requireSession(a.handleOverview))
 	mux.HandleFunc("/api/v1/devices", a.requireSession(a.handleDevices))
 	mux.HandleFunc("/api/v1/gpus/", a.requireSession(a.handleGPUSeries))
@@ -273,6 +275,14 @@ func (a *App) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, a.setupStatus(r))
+}
+
+func (a *App) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, version.Current())
 }
 
 func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {

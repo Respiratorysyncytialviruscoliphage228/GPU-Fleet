@@ -133,6 +133,26 @@ export type ServiceMutationResponse = {
   restart_required: boolean;
 };
 
+export type ChangelogEntry = {
+  version: string;
+  date: string;
+  title: string;
+  added?: string[];
+  changed?: string[];
+  security?: string[];
+  fixed?: string[];
+};
+
+export type ReleaseInfo = {
+  product: string;
+  version: string;
+  commit: string;
+  build_time?: string;
+  author: string;
+  repository: string;
+  changelog: ChangelogEntry[];
+};
+
 export type Overview = {
   server_time: string;
   device_count: number;
@@ -229,6 +249,10 @@ export function logout() {
 
 export function getOverview() {
   return request<Overview>('/api/v1/overview');
+}
+
+export function getVersion() {
+  return request<ReleaseInfo>('/api/v1/version');
 }
 
 export function getStats(hours = 24) {

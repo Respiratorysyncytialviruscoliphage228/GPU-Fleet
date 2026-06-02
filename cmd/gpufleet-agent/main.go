@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gpufleet/internal/agent"
+	"gpufleet/internal/version"
 )
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 	var printOnly bool
 	var collectProcesses bool
 	var gzipBody bool
+	var showVersion bool
 
 	flag.StringVar(&serverURL, "server-url", env("GPUFLEET_SERVER_URL", "http://127.0.0.1:8080"), "GPUFleet server URL")
 	flag.StringVar(&deviceID, "device-id", env("GPUFLEET_DEVICE_ID", "local-dev"), "device id")
@@ -37,7 +39,12 @@ func main() {
 	flag.BoolVar(&printOnly, "print", false, "collect one sample and print JSON without uploading")
 	flag.BoolVar(&collectProcesses, "processes", envBool("GPUFLEET_PROCESSES", true), "collect GPU process snapshots")
 	flag.BoolVar(&gzipBody, "gzip", true, "gzip request body")
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
+	if showVersion {
+		fmt.Println(version.String())
+		return
+	}
 
 	if printOnly {
 		sample, err := agent.NewCollector(nvidiaSMI, 5*time.Second).Collect(context.Background())
