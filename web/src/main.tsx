@@ -32,6 +32,7 @@ import {
 import {
   createDevice,
   Device,
+  getGPUSeries,
   getOverview,
   getStats,
   GPUStats,
@@ -367,57 +368,82 @@ function FleetKPI({ label, value, tone }: { label: string; value: string; tone?:
 
 function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] }) {
   const deviceMap = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
-  const rows = items.map((item) => ({ item, device: deviceMap.get(item.device_id), health: gpuHealth(item, deviceMap.get(item.device_id)) }));
+  const cards = items.map((item) => ({ item, device: deviceMap.get(item.device_id), health: gpuHealth(item, deviceMap.get(item.device_id)) }));
 
   return (
     <section className="fleet-board panel" data-testid="fleet-board">
       <div className="panel-head fleet-board-head">
         <div>
           <h2>GPU Fleet</h2>
-          <p>按设备聚合最新 GPU 状态</p>
+          <p>卡片化查看多设备 GPU 运行状态</p>
         </div>
         <span>{items.length} GPUs</span>
       </div>
-      <div className="fleet-table">
-        <div className="fleet-row fleet-header">
-          <span>设备 / GPU</span>
-          <span>GPU 利用率</span>
-          <span>显存</span>
-          <span>温度</span>
-          <span>功耗</span>
-          <span>链路 / 状态</span>
-        </div>
-        {rows.map(({ item, device, health }) => (
-          <div className={`fleet-row ${health.tone}`} key={`${item.device_id}-${item.gpu.gpu_id}`}>
-            <div className="fleet-device-cell" data-label="设备 / GPU">
-              <span className={`status-dot ${health.tone}`} />
-              <div>
-                <strong>{deviceName(device, item.device_id)}</strong>
-                <p>{shortGPUName(item.gpu.name || item.gpu.gpu_id)} · {item.gpu.gpu_id} · {timeAgo(item.timestamp)}</p>
-              </div>
-            </div>
-            <FleetMeterCell label="GPU 利用率" value={item.gpu.utilization_gpu_percent} />
-            <FleetMeterCell label="显存" value={memoryUsagePercent(item)} text={`${pct(memoryUsagePercent(item))} · ${fmtBytes(item.gpu.memory_used_bytes)}`} />
-            <div className="fleet-cell" data-label="温度"><strong>{temp(item.gpu.temperature_celsius)}</strong><p>{tempToneText(item.gpu.temperature_celsius)}</p></div>
-            <div className="fleet-cell" data-label="功耗"><strong>{watts(item.gpu.power_draw_watts)}</strong><p>{item.gpu.power_limit_watts ? `上限 ${watts(item.gpu.power_limit_watts)}` : item.gpu.pstate || '-'}</p></div>
-            <div className="fleet-cell" data-label="链路 / 状态">
-              <span className={`pill ${health.tone}`}>{health.label}</span>
-              <p>{pcieLabel(item)} · {item.gpu.pstate || '-'}</p>
-            </div>
-          </div>
+      <div className="fleet-card-grid">
+        {cards.map(({ item, device, health }) => (
+          <FleetGPUCard item={item} device={device} health={health} key={`${item.device_id}-${item.gpu.gpu_id}`} />
         ))}
-        {rows.length === 0 && <p className="empty">暂无 GPU 上报</p>}
+        {cards.length === 0 && <p className="empty">暂无 GPU 上报</p>}
       </div>
     </section>
   );
 }
 
-function FleetMeterCell({ label, value, text }: { label: string; value?: number; text?: string }) {
-  const width = Math.max(0, Math.min(100, value ?? 0));
+function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Device; health: ReturnType<typeof gpuHealth> }) {
+  const gpu = item.gpu;
+  const util = gpu.utilization_gpu_percent;
+  const mem = memoryUsagePercent(item);
+  const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
+  const series = useQuery({
+    queryKey: ['gpu-series', item.device_id, gpu.gpu_id, 1],
+    queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
+    refetchInterval: 30000,
+    retry: false
+  });
+  const points = series.data ?? [];
+
   return (
-    <div className="fleet-cell meter-cell" data-label={label}>
-      <div className="meter compact"><i style={{ width: `${width}%` }} /></div>
-      <strong>{text ?? pct(value)}</strong>
+    <article className={`fleet-gpu-card ${health.tone}`} data-testid="fleet-gpu-card">
+      {health.tone === 'offline' && <div className="offline-mask">离线</div>}
+      <div className="fleet-card-top">
+        <div className="fleet-device-cell">
+          <span className={`status-dot ${health.tone}`} />
+          <div>
+            <strong>{deviceName(device, item.device_id)}</strong>
+            <p>{shortGPUName(gpu.name || gpu.gpu_id)} · {gpu.gpu_id} · {timeAgo(item.timestamp)}</p>
+          </div>
+        </div>
+        <span className={`pill ${health.tone}`}>{health.label}</span>
+      </div>
+
+      <div className="gpu-card-meta">
+        <span>{pcieLabel(item)}</span>
+        <span>{gpu.pstate || '-'}</span>
+        <span>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</span>
+      </div>
+
+      <div className="gpu-trend-grid">
+        <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} />
+        <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} />
+        <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} />
+        <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} />
+      </div>
+    </article>
+  );
+}
+
+function TrendTile({ label, value, caption, values, max, tone }: { label: string; value: string; caption: string; values: Array<number | undefined>; max: number; tone: 'good' | 'warn' | 'bad' | 'accent' }) {
+  const clean = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+  return (
+    <div className={`trend-tile ${tone}`} data-testid="gpu-trend-tile">
+      <div className="trend-head">
+        <div>
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+        <p>{caption}</p>
+      </div>
+      <Sparkline values={clean} max={max} />
     </div>
   );
 }
@@ -453,6 +479,40 @@ function shortGPUName(name: string) {
 
 function memoryUsagePercent(item: StoredGPU) {
   return item.gpu.memory_total_bytes ? (item.gpu.memory_used_bytes / item.gpu.memory_total_bytes) * 100 : undefined;
+}
+
+function metricTone(value: number | undefined, warnAt: number, badAt: number): 'good' | 'warn' | 'bad' | 'accent' {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'accent';
+  if (value >= badAt) return 'bad';
+  if (value >= warnAt) return 'warn';
+  return 'good';
+}
+
+function maxSeries(values: Array<number | undefined>, fallback: number) {
+  const clean = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+  return clean.length ? Math.max(fallback, ...clean) : fallback;
+}
+
+function Sparkline({ values, max }: { values: number[]; max: number }) {
+  const width = 180;
+  const height = 58;
+  const pad = 4;
+  const clean = values.length > 0 ? values : [0];
+  const cappedMax = Math.max(1, max);
+  const points = clean.map((value, index) => {
+    const x = clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
+    const y = height - pad - (Math.max(0, Math.min(cappedMax, value)) / cappedMax) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = points.join(' ');
+  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="历史趋势图" preserveAspectRatio="none">
+      <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
+      <polygon className="spark-area" points={area} />
+      <polyline className="spark-line" points={line} />
+    </svg>
+  );
 }
 
 function pcieLabel(item: StoredGPU) {

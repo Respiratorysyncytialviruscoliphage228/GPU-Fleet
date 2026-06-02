@@ -300,41 +300,66 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
 }
 
 .fleet-board {
-  padding: 0;
+  padding: 16px;
   overflow: hidden;
 }
 
 .fleet-board-head {
-  padding: 16px 16px 10px;
-  margin-bottom: 0;
+  margin-bottom: 12px;
 }
 
-.fleet-table {
+.fleet-card-grid {
   display: grid;
-}
-
-.fleet-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.35fr) minmax(128px, .72fr) minmax(150px, .85fr) minmax(92px, .5fr) minmax(116px, .6fr) minmax(132px, .75fr);
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
   gap: 12px;
-  align-items: center;
-  padding: 12px 16px;
-  border-top: 1px solid var(--line);
 }
 
-.fleet-header {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  background: var(--panel-soft);
+.fleet-gpu-card {
+  min-width: 0;
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel-soft) 88%, var(--panel)), var(--panel)),
+    var(--panel);
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
 }
 
-.fleet-row.good { box-shadow: inset 3px 0 0 var(--good); }
-.fleet-row.warn { box-shadow: inset 3px 0 0 var(--warn); }
-.fleet-row.bad { box-shadow: inset 3px 0 0 var(--bad); }
-.fleet-row.offline { box-shadow: inset 3px 0 0 var(--offline); }
+.fleet-gpu-card.good { border-color: color-mix(in srgb, var(--good) 34%, var(--line)); }
+.fleet-gpu-card.warn { border-color: color-mix(in srgb, var(--warn) 38%, var(--line)); }
+.fleet-gpu-card.bad { border-color: color-mix(in srgb, var(--bad) 42%, var(--line)); }
+.fleet-gpu-card.offline { border-color: color-mix(in srgb, var(--offline) 38%, var(--line)); }
+
+.fleet-gpu-card.offline > :not(.offline-mask) {
+  filter: grayscale(.95);
+  opacity: .48;
+}
+
+.offline-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 62%, rgba(123, 135, 148, .28));
+  color: var(--offline);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.fleet-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
 
 .fleet-device-cell {
   display: grid;
@@ -364,21 +389,109 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
 .status-dot.bad { background: var(--bad); box-shadow: 0 0 0 4px var(--bad-soft); }
 .status-dot.offline { background: var(--offline); box-shadow: 0 0 0 4px var(--offline-soft); }
 
-.fleet-cell {
-  min-width: 0;
-}
-
-.fleet-cell strong {
-  display: block;
-  font-size: 14px;
-  line-height: 1.2;
-}
-
-.meter-cell {
+.gpu-card-meta {
   display: grid;
-  grid-template-columns: minmax(64px, 1fr) auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+}
+
+.gpu-card-meta span {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.gpu-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trend-tile {
+  min-width: 0;
+  min-height: 148px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px;
+  display: grid;
+  grid-template-rows: auto minmax(58px, 1fr);
+  gap: 8px;
+}
+
+.trend-tile.good { border-color: color-mix(in srgb, var(--good) 30%, var(--line)); }
+.trend-tile.warn { border-color: color-mix(in srgb, var(--warn) 34%, var(--line)); }
+.trend-tile.bad { border-color: color-mix(in srgb, var(--bad) 38%, var(--line)); }
+
+.trend-head {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.trend-head span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trend-head strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.trend-head p {
+  margin-top: 0;
+  line-height: 1.25;
+  text-align: right;
+  max-width: 96px;
+}
+
+.sparkline {
+  width: 100%;
+  height: 74px;
+  align-self: end;
+}
+
+.spark-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.spark-area {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.spark-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-tile.good .spark-line { stroke: var(--good); }
+.trend-tile.warn .spark-line { stroke: var(--warn); }
+.trend-tile.bad .spark-line { stroke: var(--bad); }
+.trend-tile.good .spark-area { fill: color-mix(in srgb, var(--good) 20%, transparent); }
+.trend-tile.warn .spark-area { fill: color-mix(in srgb, var(--warn) 20%, transparent); }
+.trend-tile.bad .spark-area { fill: color-mix(in srgb, var(--bad) 20%, transparent); }
+
+.trend-tile.accent .spark-area {
+  fill: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .meter {
@@ -711,10 +824,6 @@ input {
   .stat-grid, .main-grid, .settings-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .fleet-row {
-    grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(126px, .8fr)) repeat(3, minmax(90px, .65fr));
-    overflow-x: auto;
-  }
   .content { padding: 16px; }
   .table-row {
     grid-template-columns: 1fr 1fr;
@@ -733,31 +842,11 @@ input {
   .fleet-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .fleet-header {
-    display: none;
-  }
-  .fleet-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 12px;
-    align-items: start;
-  }
-  .fleet-row > *::before {
-    content: attr(data-label);
-    display: block;
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 800;
-    margin-bottom: 4px;
-  }
-  .fleet-device-cell {
-    grid-column: 1 / -1;
-  }
-  .fleet-device-cell::before {
-    display: none;
-  }
-  .meter-cell {
+  .fleet-card-grid {
     grid-template-columns: 1fr;
-    gap: 5px;
+  }
+  .gpu-card-meta {
+    grid-template-columns: 1fr;
   }
   .stat-grid, .main-grid {
     grid-template-columns: 1fr;
@@ -779,7 +868,10 @@ input {
 
 @media (max-width: 430px) {
   .content { padding: 12px; }
-  .fleet-kpis, .fleet-row {
+  .fleet-kpis {
+    grid-template-columns: 1fr;
+  }
+  .gpu-trend-grid {
     grid-template-columns: 1fr;
   }
   .top-actions {

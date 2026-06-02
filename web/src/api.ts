@@ -50,6 +50,15 @@ export type StoredGPU = {
   gpu: GPUStatus;
 };
 
+export type GPUSeriesPoint = {
+  timestamp: string;
+  utilization_gpu_percent?: number;
+  memory_used_bytes: number;
+  memory_total_bytes: number;
+  temperature_celsius?: number;
+  power_draw_watts?: number;
+};
+
 export type Device = {
   id: string;
   alias: string;
@@ -153,6 +162,10 @@ export function getOverview() {
 
 export function getStats(hours = 24) {
   return request<StatsResponse>(`/api/v1/stats/gpu-utilization?hours=${hours}`);
+}
+
+export function getGPUSeries(deviceId: string, gpuId: string, hours = 1) {
+  return request<GPUSeriesPoint[]>(`/api/v1/gpus/${encodeURIComponent(gpuId)}/series?device_id=${encodeURIComponent(deviceId)}&hours=${hours}`);
 }
 
 export function createDevice(alias: string) {
