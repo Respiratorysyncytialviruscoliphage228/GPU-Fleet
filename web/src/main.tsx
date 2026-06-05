@@ -740,7 +740,7 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
 
       <section className="overview-secondary">
         <ProcessPanel items={data?.latest_processes ?? []} devices={devices} />
-        <StatsPanel statRows={statRows} />
+        <StatsPanel statRows={statRows} devices={devices} />
       </section>
     </>
   );
@@ -774,7 +774,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
         </div>
       </section>
 
-      <StatsPanel statRows={statRows} />
+      <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
     </>
   );
 }
@@ -1465,7 +1465,8 @@ function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Dev
   );
 }
 
-function StatsPanel({ statRows }: { statRows: GPUStats[] }) {
+function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Device[] }) {
+  const deviceByID = new Map(devices.map((device) => [device.id, device]));
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1477,7 +1478,7 @@ function StatsPanel({ statRows }: { statRows: GPUStats[] }) {
           <div className="table-row" key={`${row.device_id}-${row.gpu_id}`}>
             <div>
               <strong>{row.gpu_name || row.gpu_id}</strong>
-              <p>{row.device_id} · {row.gpu_id} · {row.sample_count} samples</p>
+              <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples</p>
             </div>
             <span>{pct(row.average_utilization_percent)}</span>
             <span>{pct(row.idle_sample_percent)} idle</span>

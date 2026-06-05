@@ -1418,7 +1418,7 @@ const dashboardHTML = `<!doctype html>
           '<section class="fleet-board panel" data-testid="fleet-board"><div class="panel-head"><div><h2>GPU Fleet</h2><p>卡片化查看多设备 GPU 运行状态</p></div><span>' + gpus.length + ' GPUs</span></div><div class="fleet-card-grid">' + renderFleetCards(gpus, devices) + '</div></section>' +
           '<div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || [], data.devices || []) + '</div>' +
         '</section>' +
-        '<section class="overview-secondary">' + renderStatsTable(state.stats) + '</section>';
+        '<section class="overview-secondary">' + renderStatsTable(state.stats, state.overview && state.overview.devices || []) + '</section>';
     }
 
     function fleetKPI(label, value, tone) {
@@ -1616,7 +1616,7 @@ const dashboardHTML = `<!doctype html>
           metric('总功耗', watts(data.power_draw_watts || 0)) +
         '</section>' +
         '<section class="main-grid"><div class="panel"><div class="panel-head"><h2>GPU 详细状态</h2><span>' + gpus.length + '</span></div><div class="gpu-grid">' + renderGPUCards(gpus) + '</div></div><div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || [], data.devices || []) + '</div></section>' +
-        renderStatsTable(state.stats);
+        renderStatsTable(state.stats, data.devices || []);
     }
     function metric(label, value) {
       return '<article class="metric"><p>' + esc(label) + '</p><strong>' + esc(value) + '</strong></article>';
@@ -1711,9 +1711,10 @@ const dashboardHTML = `<!doctype html>
         items.slice(0, 32).map((item) => '<div class="list-row"><div><strong>' + esc((item.process || {}).process_name || 'unknown') + '</strong><p>' + esc(deviceName(deviceMap.get(item.device_id), item.device_id || '-')) + ' · PID ' + esc((item.process || {}).pid || '-') + ' · ' + esc((item.process || {}).gpu_id || '-') + '</p></div><span class="pill">' + fmtBytes((item.process || {}).used_memory_bytes) + '</span></div>').join('') +
         (items.length ? '' : '<p class="empty">暂无 GPU 进程快照</p>') + '</section>';
     }
-    function renderStatsTable(rows) {
+    function renderStatsTable(rows, devices) {
+      const deviceMap = new Map((devices || []).map((device) => [device.id, device]));
       return '<section class="panel"><div class="panel-head"><h2>24 小时统计</h2><span>' + rows.length + '</span></div><div class="stats-table">' +
-        rows.map((row) => '<div class="table-row"><div><strong>' + esc(row.gpu_name || row.gpu_id) + '</strong><p>' + esc(row.device_id + ' · ' + row.gpu_id + ' · ' + row.sample_count + ' samples') + '</p></div><span>' + pct(row.average_utilization_percent) + '</span><span>' + pct(row.idle_sample_percent) + ' idle</span><span>' + temp(row.peak_temperature_celsius) + '</span><span>' + watts(row.peak_power_draw_watts) + '</span></div>').join('') +
+        rows.map((row) => '<div class="table-row"><div><strong>' + esc(row.gpu_name || row.gpu_id) + '</strong><p>' + esc(deviceName(deviceMap.get(row.device_id), row.device_id || '-') + ' · ' + row.gpu_id + ' · ' + row.sample_count + ' samples') + '</p></div><span>' + pct(row.average_utilization_percent) + '</span><span>' + pct(row.idle_sample_percent) + ' idle</span><span>' + temp(row.peak_temperature_celsius) + '</span><span>' + watts(row.peak_power_draw_watts) + '</span></div>').join('') +
         (rows.length ? '' : '<p class="empty">暂无统计数据</p>') + '</div></section>';
     }
 

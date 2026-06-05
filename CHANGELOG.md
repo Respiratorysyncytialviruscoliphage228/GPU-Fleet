@@ -20,6 +20,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - Trend card primary values now span the full row and keep values with their units together, avoiding ellipses while horizontal space remains available.
 - GPU 进程列表元信息改为显示设备名称、PID 和 GPU，优先使用设备别名或主机名替代设备 ID。
 - GPU process list metadata now shows device name, PID, and GPU, preferring device aliases or hostnames over device IDs.
+- 24 小时统计列表元信息同步优先显示设备名称，减少直接展示设备 ID。
+- 24-hour stats metadata now also prefers device names, reducing direct device ID display.
 
 ### Fixed / 修复
 
