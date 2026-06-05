@@ -789,6 +789,17 @@ input:focus-visible {
   animation: card-enter var(--motion-slow) var(--ease) both;
 }
 
+.metric.with-spark {
+  display: grid;
+  grid-template-columns: minmax(112px, max-content) minmax(96px, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.metric-copy {
+  min-width: 0;
+}
+
 .metric-icon {
   width: 32px;
   height: 32px;
@@ -807,6 +818,35 @@ input:focus-visible {
 .metric.critical strong { color: var(--bad); }
 .metric.warning strong { color: var(--warn); }
 .metric.ok strong { color: var(--good); }
+
+.metric-spark {
+  height: 54px;
+  min-width: 0;
+  align-self: center;
+}
+
+.metric-spark .spark-tooltip {
+  top: auto;
+  bottom: calc(100% + 5px);
+}
+
+.metric-spark.good .spark-line,
+.metric-spark.good .spark-point {
+  stroke: var(--good);
+}
+
+.metric-spark.good .spark-area {
+  fill: color-mix(in srgb, var(--good) 18%, transparent);
+}
+
+.metric-spark.accent .spark-line,
+.metric-spark.accent .spark-point {
+  stroke: var(--accent);
+}
+
+.metric-spark.accent .spark-area {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
 .main-grid {
   display: grid;

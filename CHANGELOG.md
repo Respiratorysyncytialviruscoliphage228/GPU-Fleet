@@ -22,6 +22,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - GPU process list metadata now shows device name, PID, and GPU, preferring device aliases or hostnames over device IDs.
 - 24 小时统计列表元信息同步优先显示设备名称，减少直接展示设备 ID。
 - 24-hour stats metadata now also prefers device names, reducing direct device ID display.
+- 总览和 GPU 监控页的汇总指标卡新增右侧迷你曲线，用于展示各 GPU 当前利用率、显存和功耗分布。
+- Overview and GPU monitoring aggregate metric cards now include right-side sparklines for current per-GPU utilization, memory, and power distribution.
 
 ### Fixed / 修复
 

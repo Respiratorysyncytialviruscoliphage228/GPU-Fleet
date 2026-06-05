@@ -751,14 +751,22 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
 }
 
 function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
+  const gpus = data?.latest_gpus ?? [];
+  const powerValue = data?.power_draw_watts;
+  const utilizationSpark = gpus.map((item) => ({ value: item.gpu.utilization_gpu_percent ?? 0, timestamp: item.timestamp }));
+  const memorySpark = gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
+  const memorySparkMax = maxSeries(gpus.map((item) => item.gpu.memory_total_bytes), data?.memory_total_bytes ?? 1);
+  const powerSpark = gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
+  const powerSparkMax = maxSeries(gpus.map((item) => item.gpu.power_limit_watts ?? item.gpu.power_enforced_limit_watts ?? item.gpu.power_draw_watts), Math.max(powerValue ?? 1, 1));
+
   return (
     <>
       <section className="stat-grid">
         <Metric icon={<MonitorUp />} label="在线设备" value={`${data?.online_device_count ?? 0} / ${data?.device_count ?? 0}`} />
         <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
-        <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
-        <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
-        <Metric icon={<Power />} label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} />
+        <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} spark={{ label: '利用率分布', samples: utilizationSpark, max: 100, formatValue: pct, tone: 'accent' }} />
+        <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '显存分布', samples: memorySpark, max: memorySparkMax, formatValue: fmtBytes, tone: 'good' }} />
+        <Metric icon={<Power />} label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '功耗分布', samples: powerSpark, max: powerSparkMax, formatValue: watts, tone: 'accent' }} />
       </section>
 
       <section className="main-grid">
@@ -1039,12 +1047,17 @@ function gpuHealth(item: StoredGPU, device?: Device): { tone: 'good' | 'warn' | 
   return { tone: 'good', label: '正常' };
 }
 
-function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: string }) {
+function Metric({ icon, label, value, tone, spark }: { icon: React.ReactNode; label: string; value: string; tone?: string; spark?: { label: string; samples: Array<{ value: number; timestamp?: string }>; max: number; formatValue: (value?: number) => string; tone?: TrendTone } }) {
   return (
-    <article className={`metric ${tone ?? ''}`}>
-      <div className="metric-icon">{icon}</div>
-      <p>{label}</p>
-      <strong>{value}</strong>
+    <article className={`metric ${tone ?? ''} ${spark ? 'with-spark' : ''}`}>
+      <div className="metric-copy">
+        <div className="metric-icon">{icon}</div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+      </div>
+      {spark && (
+        <Sparkline samples={spark.samples} max={spark.max} label={spark.label} formatValue={spark.formatValue} className={`metric-spark ${spark.tone ?? 'accent'}`} />
+      )}
     </article>
   );
 }
