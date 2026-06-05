@@ -543,6 +543,7 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	utilCount := 0
 	usedMem := uint64(0)
 	totalMem := uint64(0)
+	totalPower := 0.0
 	hot := 0
 	for _, item := range latest {
 		if !deviceIDs[item.DeviceID] {
@@ -555,6 +556,9 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 		usedMem += item.GPU.MemoryUsedBytes
 		totalMem += item.GPU.MemoryTotalBytes
+		if item.GPU.PowerDrawWatts != nil {
+			totalPower += *item.GPU.PowerDrawWatts
+		}
 		if item.GPU.TemperatureCelsius != nil && *item.GPU.TemperatureCelsius >= 85 {
 			hot++
 		}
@@ -572,6 +576,7 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		AverageUtilization: avgUtil,
 		MemoryUsedBytes:    usedMem,
 		MemoryTotalBytes:   totalMem,
+		PowerDrawWatts:     totalPower,
 		HotGPUCount:        hot,
 		Disk:               diskStatus,
 		Devices:            deviceViews,
@@ -1079,6 +1084,7 @@ type overviewResponse struct {
 	AverageUtilization float64                 `json:"average_utilization"`
 	MemoryUsedBytes    uint64                  `json:"memory_used_bytes"`
 	MemoryTotalBytes   uint64                  `json:"memory_total_bytes"`
+	PowerDrawWatts     float64                 `json:"power_draw_watts"`
 	HotGPUCount        int                     `json:"hot_gpu_count"`
 	Disk               DiskStatus              `json:"disk"`
 	Devices            []deviceView            `json:"devices"`

@@ -530,7 +530,7 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
           <FleetKPI label="忙碌 GPU" value={String(busyCount)} tone={busyCount > 0 ? 'accent' : 'good'} />
           <FleetKPI label="高温 GPU" value={String(hotCount)} tone={hotCount > 0 ? 'bad' : 'good'} />
           <FleetKPI label="显存占用" value={pct(memoryPct)} />
-          <FleetKPI label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status === 'critical' ? 'bad' : data?.disk.status === 'warning' ? 'warn' : 'good'} />
+          <FleetKPI label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} />
         </div>
       </section>
 

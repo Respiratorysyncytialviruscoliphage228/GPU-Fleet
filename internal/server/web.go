@@ -1220,7 +1220,7 @@ const dashboardHTML = `<!doctype html>
             fleetKPI('忙碌 GPU', String(busy), busy ? 'accent' : 'good') +
             fleetKPI('高温 GPU', String(hot), hot ? 'bad' : 'good') +
             fleetKPI('显存占用', pct(memoryPct), '') +
-            fleetKPI('磁盘保护', ((data.disk || {}).status || 'ok').toUpperCase(), (data.disk || {}).status === 'critical' ? 'bad' : (data.disk || {}).status === 'warning' ? 'warn' : 'good') +
+            fleetKPI('总功耗', watts(data.power_draw_watts || 0), data.power_draw_watts ? 'accent' : 'good') +
           '</div>' +
         '</section>' +
         '<section class="overview-layout">' +

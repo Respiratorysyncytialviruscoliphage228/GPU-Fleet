@@ -183,6 +183,7 @@ export type Overview = {
   average_utilization: number;
   memory_used_bytes: number;
   memory_total_bytes: number;
+  power_draw_watts: number;
   hot_gpu_count: number;
   disk: DiskStatus;
   devices: Device[];
