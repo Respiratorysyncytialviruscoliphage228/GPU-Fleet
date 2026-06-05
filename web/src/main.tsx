@@ -1026,7 +1026,7 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   const width = 180;
   const height = 58;
   const pad = 4;
-  const clean = samples;
+  const clean = useMemo(() => prepareSparklineSamples(samples, width - pad * 2), [samples]);
   const hasLine = clean.length >= 2;
   const cappedMax = Math.max(1, max);
   const pointData = clean.map((sample, index) => {
@@ -1034,9 +1034,8 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
     const y = height - pad - (Math.max(0, Math.min(cappedMax, sample.value)) / cappedMax) * (height - pad * 2);
     return { ...sample, x, y };
   });
-  const points = pointData.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
-  const line = points.join(' ');
-  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
+  const line = smoothSparklinePath(pointData);
+  const area = sparklineAreaPath(pointData, height - pad);
   const active = hasLine && hoverIndex !== null ? pointData[hoverIndex] : undefined;
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -1053,8 +1052,8 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
         <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
         {hasLine && (
           <>
-            <polygon className="spark-area" points={area} />
-            <polyline className="spark-line" points={line} />
+            <path className="spark-area" d={area} />
+            <path className="spark-line" d={line} />
           </>
         )}
         {active && (
@@ -1073,6 +1072,42 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
       )}
     </div>
   );
+}
+
+function prepareSparklineSamples(samples: Array<{ value: number; timestamp?: string }>, targetPixels: number) {
+  const clean = samples.filter((sample) => typeof sample.value === 'number' && Number.isFinite(sample.value));
+  const maxPoints = Math.max(24, Math.floor(targetPixels));
+  if (clean.length <= maxPoints) return clean;
+  const buckets = new Map<number, { value: number; timestamp?: string; count: number }>();
+  clean.forEach((sample, index) => {
+    const bucketIndex = Math.min(maxPoints - 1, Math.floor((index / Math.max(1, clean.length - 1)) * maxPoints));
+    const bucket = buckets.get(bucketIndex) ?? { value: 0, timestamp: sample.timestamp, count: 0 };
+    bucket.value += sample.value;
+    bucket.count += 1;
+    bucket.timestamp = sample.timestamp;
+    buckets.set(bucketIndex, bucket);
+  });
+  return Array.from(buckets.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([, bucket]) => ({ value: bucket.value / bucket.count, timestamp: bucket.timestamp }));
+}
+
+function smoothSparklinePath(points: Array<{ x: number; y: number }>) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  const parts = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const midX = (previous.x + current.x) / 2;
+    parts.push(`C ${midX.toFixed(1)} ${previous.y.toFixed(1)}, ${midX.toFixed(1)} ${current.y.toFixed(1)}, ${current.x.toFixed(1)} ${current.y.toFixed(1)}`);
+  }
+  return parts.join(' ');
+}
+
+function sparklineAreaPath(points: Array<{ x: number; y: number }>, baseline: number) {
+  if (points.length < 2) return '';
+  return `${smoothSparklinePath(points)} L ${points[points.length - 1].x.toFixed(1)} ${baseline.toFixed(1)} L ${points[0].x.toFixed(1)} ${baseline.toFixed(1)} Z`;
 }
 
 function deviceBorderColor(deviceID: string) {
