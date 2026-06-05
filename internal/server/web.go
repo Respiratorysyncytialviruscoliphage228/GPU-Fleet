@@ -943,8 +943,8 @@ const dashboardHTML = `<!doctype html>
       <div class="brand"><span class="brand-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="fallbackShellB" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="fallbackChipB" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#fallbackShellB)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#fallbackChipB)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>GPUFleet</span></div>
       <nav>
         <button class="active" data-view="overview">总览</button>
-        <button data-view="devices">设备</button>
         <button data-view="gpus">GPU</button>
+        <button data-view="devices">设备</button>
         <button data-view="settings">设置</button>
       </nav>
     </aside>
