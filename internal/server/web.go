@@ -593,6 +593,80 @@ const dashboardHTML = `<!doctype html>
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+    .danger-action {
+      color: var(--bad);
+      border-color: var(--bad);
+    }
+    .danger-primary {
+      background: var(--bad);
+      border-color: var(--bad);
+      color: white;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(22, 33, 44, .28);
+      backdrop-filter: blur(14px);
+    }
+    .confirm-dialog {
+      width: min(460px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .confirm-dialog.warning { border-color: var(--warn); }
+    .confirm-dialog.danger { border-color: var(--bad); }
+    .confirm-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+    }
+    .confirm-dialog.warning .confirm-icon { color: var(--warn); background: var(--warn-soft); }
+    .confirm-dialog.danger .confirm-icon { color: var(--bad); background: var(--bad-soft); }
+    .confirm-copy span, .confirm-target span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .confirm-copy h2 {
+      margin-top: 6px;
+      font-size: 20px;
+    }
+    .confirm-copy p { line-height: 1.55; }
+    .confirm-target {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 10px;
+      min-width: 0;
+    }
+    .confirm-target strong {
+      display: block;
+      margin-top: 6px;
+      overflow-wrap: anywhere;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .settings-page, .settings-status, .setting-operation { display: grid; gap: 14px; }
     .settings-kpi-grid {
       display: grid;
@@ -878,6 +952,7 @@ const dashboardHTML = `<!doctype html>
       <section id="settingsView" data-page="settings" class="hidden"></section>
     </main>
   </div>
+  <div id="modalRoot"></div>
   <script>
     const login = document.getElementById('login');
     const app = document.getElementById('app');
@@ -888,6 +963,8 @@ const dashboardHTML = `<!doctype html>
       history: new Map(),
       message: '',
       secret: null,
+      pendingConfirm: null,
+      confirmBusy: false,
       theme: initialTheme()
     };
     const titles = {
@@ -984,17 +1061,22 @@ const dashboardHTML = `<!doctype html>
     document.addEventListener('click', async (event) => {
       const button = event.target.closest('[data-device-action]');
       if (!button) return;
-      const id = button.dataset.deviceId;
-      const action = button.dataset.deviceAction;
-      try {
-        const result = await api('/api/v1/admin/devices/' + encodeURIComponent(id) + '/' + action, {method: 'POST', body: '{}'});
-        state.message = action === 'disable' ? '设备已禁用' : action === 'enable' ? '设备已启用' : '设备密钥已轮换';
-        if (result.secret) state.secret = {deviceId: id, value: result.secret, title: '已轮换密钥'};
-        await refresh();
-      } catch (err) {
-        state.message = err.message;
-        render();
+      openDeviceConfirm(button.dataset.deviceId, button.dataset.deviceAction);
+    });
+    document.addEventListener('click', async (event) => {
+      const action = event.target.closest('[data-confirm-action]');
+      if (!action) return;
+      if (action.dataset.confirmAction === 'cancel') {
+        closeDeviceConfirm();
+        return;
       }
+      if (action.dataset.confirmAction === 'confirm') await runDeviceConfirm();
+    });
+    document.addEventListener('mousedown', (event) => {
+      if (event.target && event.target.id === 'modalRoot') closeDeviceConfirm();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeDeviceConfirm();
     });
     document.addEventListener('pointermove', (event) => {
       const wrap = event.target.closest('.sparkline-wrap');
@@ -1194,6 +1276,95 @@ const dashboardHTML = `<!doctype html>
       return (Math.abs(value) >= 100 ? Math.round(value) : value.toFixed(1)) + unit;
     }
 
+    function openDeviceConfirm(deviceID, action) {
+      const device = (state.data && state.data.devices || []).find((item) => item.id === deviceID);
+      if (!device) return;
+      state.pendingConfirm = {device, action};
+      renderDeviceConfirm();
+    }
+
+    function closeDeviceConfirm() {
+      state.pendingConfirm = null;
+      state.confirmBusy = false;
+      renderDeviceConfirm();
+    }
+
+    async function runDeviceConfirm() {
+      if (!state.pendingConfirm || state.confirmBusy) return;
+      const pending = state.pendingConfirm;
+      const id = pending.device.id;
+      const action = pending.action;
+      state.confirmBusy = true;
+      renderDeviceConfirm();
+      try {
+        let result = null;
+        if (action === 'delete') {
+          result = await api('/api/v1/admin/devices/' + encodeURIComponent(id), {method: 'DELETE'});
+          state.secret = null;
+          state.message = '设备已删除';
+        } else {
+          const endpoint = action === 'rotate' ? 'rotate-secret' : action;
+          result = await api('/api/v1/admin/devices/' + encodeURIComponent(id) + '/' + endpoint, {method: 'POST', body: '{}'});
+          state.message = action === 'disable' ? '设备已禁用' : action === 'enable' ? '设备已启用' : '设备密钥已轮换';
+          if (result && result.secret) state.secret = {deviceId: id, value: result.secret, title: '已轮换密钥'};
+        }
+        closeDeviceConfirm();
+        await refresh();
+      } catch (err) {
+        state.message = err.message;
+        closeDeviceConfirm();
+        render();
+      }
+    }
+
+    function renderDeviceConfirm() {
+      const root = document.getElementById('modalRoot');
+      if (!root) return;
+      const pending = state.pendingConfirm;
+      if (!pending) {
+        root.innerHTML = '';
+        return;
+      }
+      const copy = deviceConfirmCopy(pending.action, pending.device);
+      root.innerHTML =
+        '<div class="modal-backdrop">' +
+          '<section class="confirm-dialog ' + esc(copy.tone) + '" role="dialog" aria-modal="true" data-testid="device-confirm-dialog">' +
+            '<div class="confirm-icon">!</div>' +
+            '<div class="confirm-copy"><span>' + esc(pending.device.id) + '</span><h2>' + esc(copy.title) + '</h2><p>' + esc(copy.body) + '</p></div>' +
+            '<div class="confirm-target"><span>目标设备</span><strong>' + esc(pending.device.alias || pending.device.id) + '</strong></div>' +
+            '<div class="confirm-actions"><button class="secondary" type="button" data-confirm-action="cancel" ' + (state.confirmBusy ? 'disabled' : '') + '>取消</button><button class="primary narrow ' + (copy.tone === 'danger' ? 'danger-primary' : '') + '" type="button" data-confirm-action="confirm" ' + (state.confirmBusy ? 'disabled' : '') + '>' + esc(state.confirmBusy ? '处理中' : copy.confirmLabel) + '</button></div>' +
+          '</section>' +
+        '</div>';
+    }
+
+    function deviceConfirmCopy(action, device) {
+      const name = device.alias || device.id;
+      if (action === 'enable') return {
+        title: '启用设备',
+        body: '允许 ' + name + ' 使用现有密钥继续上报 GPU 指标。',
+        confirmLabel: '确认启用',
+        tone: 'normal'
+      };
+      if (action === 'disable') return {
+        title: '禁用设备',
+        body: '禁用后 ' + name + ' 的上报请求会被服务端拒绝，客户端本机配置不会被修改。',
+        confirmLabel: '确认禁用',
+        tone: 'warning'
+      };
+      if (action === 'rotate') return {
+        title: '轮换密钥',
+        body: '旧密钥会立即失效，需要在 ' + name + ' 所在机器手动更新新密钥后才能继续上报。',
+        confirmLabel: '确认轮换',
+        tone: 'warning'
+      };
+      return {
+        title: '删除设备',
+        body: '删除后 ' + name + ' 将从设备列表和最新 GPU 快照中移除，原 Agent 密钥会失效。',
+        confirmLabel: '确认删除',
+        tone: 'danger'
+      };
+    }
+
     function renderGPUPage(data) {
       const gpus = data.latest_gpus || [];
       const mem = data.memory_total_bytes ? data.memory_used_bytes / data.memory_total_bytes * 100 : 0;
@@ -1279,7 +1450,7 @@ const dashboardHTML = `<!doctype html>
     function renderDeviceRow(device) {
       const status = device.enabled ? (device.status || 'offline') : 'disabled';
       const action = device.enabled ? 'disable' : 'enable';
-      return '<div class="device-row"><div><strong>' + esc(device.alias || device.id) + '</strong><p>' + esc(device.id + ' · ' + (device.hostname || '-') + ' · ' + (device.agent_version || '-')) + '</p></div><span class="pill ' + status + '">' + status + '</span><div class="row-actions"><button class="secondary" data-device-action="' + action + '" data-device-id="' + esc(device.id) + '">' + (device.enabled ? '禁用' : '启用') + '</button><button class="secondary" data-device-action="rotate-secret" data-device-id="' + esc(device.id) + '">轮换</button></div></div>';
+      return '<div class="device-row"><div><strong>' + esc(device.alias || device.id) + '</strong><p>' + esc(device.id + ' · ' + (device.hostname || '-') + ' · ' + (device.agent_version || '-')) + '</p></div><span class="pill ' + status + '">' + status + '</span><div class="row-actions"><button class="secondary" data-device-action="' + action + '" data-device-id="' + esc(device.id) + '">' + (device.enabled ? '禁用' : '启用') + '</button><button class="secondary" data-device-action="rotate" data-device-id="' + esc(device.id) + '">轮换</button><button class="secondary danger-action" data-device-action="delete" data-device-id="' + esc(device.id) + '">删除</button></div></div>';
     }
     function escJS(value) {
       return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");

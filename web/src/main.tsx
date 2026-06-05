@@ -30,8 +30,10 @@ import {
   RefreshCw,
   Save,
   Server,
+  ShieldAlert,
   Settings,
   Sun,
+  Trash2,
   Upload
 } from 'lucide-react';
 import {
@@ -41,6 +43,7 @@ import {
   changePassword,
   createDevice,
   databaseDownloadURL,
+  deleteDevice,
   Device,
   getGPUSeries,
   getOverview,
@@ -74,6 +77,7 @@ type View = 'overview' | 'devices' | 'gpus' | 'settings';
 type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
+type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
 
 const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c54040', '#2f6fbd', '#8a5a00', '#00806a'];
 const repositoryOwner = 'stlin256';
@@ -912,6 +916,7 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState('');
   const [secret, setSecret] = useState<{ deviceId: string; value: string; title: string }>();
+  const [confirm, setConfirm] = useState<{ kind: DeviceActionKind; device: Device }>();
 
   async function refresh() {
     await query.invalidateQueries({ queryKey: ['overview'] });
@@ -934,30 +939,30 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
     }
   }
 
-  async function toggle(deviceId: string, enabled: boolean) {
-    setBusy(`${enabled ? 'enable' : 'disable'}-${deviceId}`);
+  async function runConfirmedAction() {
+    if (!confirm) return;
+    const { kind, device } = confirm;
+    setConfirm(undefined);
+    setBusy(`${kind}-${device.id}`);
     setMessage('');
     try {
-      await setDeviceEnabled(deviceId, enabled);
-      setMessage(enabled ? '设备已启用' : '设备已禁用');
+      if (kind === 'enable' || kind === 'disable') {
+        await setDeviceEnabled(device.id, kind === 'enable');
+        setMessage(kind === 'enable' ? '设备已启用' : '设备已禁用');
+      }
+      if (kind === 'rotate') {
+        const result = await rotateDeviceSecret(device.id);
+        setSecret({ deviceId: device.id, value: result.secret, title: '已轮换密钥' });
+        setMessage('设备密钥已轮换');
+      }
+      if (kind === 'delete') {
+        await deleteDevice(device.id);
+        setSecret(undefined);
+        setMessage('设备已删除');
+      }
       await refresh();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'device update failed');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function rotate(deviceId: string) {
-    setBusy(`rotate-${deviceId}`);
-    setMessage('');
-    try {
-      const result = await rotateDeviceSecret(deviceId);
-      setSecret({ deviceId, value: result.secret, title: '已轮换密钥' });
-      setMessage('设备密钥已轮换');
-      await refresh();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'secret rotation failed');
+      setMessage(err instanceof Error ? err.message : 'device action failed');
     } finally {
       setBusy('');
     }
@@ -998,13 +1003,17 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
               </div>
               <span className={`pill ${device.enabled ? (device.status ?? 'offline') : 'disabled'}`}>{device.enabled ? (device.status ?? 'offline') : 'disabled'}</span>
               <div className="row-actions">
-                <button className="secondary" onClick={() => toggle(device.id, !device.enabled)} disabled={busy.endsWith(device.id)} title={device.enabled ? '禁用设备' : '启用设备'}>
+                <button className="secondary" onClick={() => setConfirm({ kind: device.enabled ? 'disable' : 'enable', device })} disabled={busy.endsWith(device.id)} title={device.enabled ? '禁用设备' : '启用设备'}>
                   {device.enabled ? <PowerOff size={16} /> : <Power size={16} />}
                   {device.enabled ? '禁用' : '启用'}
                 </button>
-                <button className="secondary" onClick={() => rotate(device.id)} disabled={busy === `rotate-${device.id}`} title="轮换密钥">
+                <button className="secondary" onClick={() => setConfirm({ kind: 'rotate', device })} disabled={busy === `rotate-${device.id}`} title="轮换密钥">
                   <KeyRound size={16} />
                   轮换
+                </button>
+                <button className="secondary danger-action" onClick={() => setConfirm({ kind: 'delete', device })} disabled={busy === `delete-${device.id}`} title="删除设备">
+                  <Trash2 size={16} />
+                  删除
                 </button>
               </div>
             </div>
@@ -1012,8 +1021,102 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
           {(data?.devices ?? []).length === 0 && <p className="empty">暂无设备</p>}
         </div>
       </section>
+      <DeviceActionConfirm
+        confirm={confirm}
+        busy={Boolean(busy)}
+        onCancel={() => setConfirm(undefined)}
+        onConfirm={runConfirmedAction}
+      />
     </div>
   );
+}
+
+function DeviceActionConfirm({
+  confirm,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  confirm?: { kind: DeviceActionKind; device: Device };
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!confirm) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirm, onCancel]);
+
+  if (!confirm) return null;
+  const copy = deviceActionCopy(confirm.kind, confirm.device);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <section className={`confirm-dialog ${copy.tone}`} role="dialog" aria-modal="true" aria-labelledby="device-confirm-title" data-testid="device-confirm-dialog">
+        <div className="confirm-icon"><ShieldAlert size={22} /></div>
+        <div className="confirm-copy">
+          <span>{confirm.device.id}</span>
+          <h2 id="device-confirm-title">{copy.title}</h2>
+          <p>{copy.body}</p>
+        </div>
+        <div className="confirm-target">
+          <span>目标设备</span>
+          <strong>{confirm.device.alias || confirm.device.id}</strong>
+        </div>
+        <div className="confirm-actions">
+          <button className="secondary" type="button" onClick={onCancel} disabled={busy}>取消</button>
+          <button className={`primary compact ${copy.tone === 'danger' ? 'danger-primary' : ''}`} type="button" onClick={onConfirm} disabled={busy}>
+            {copy.icon}
+            {busy ? '处理中' : copy.confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function deviceActionCopy(kind: DeviceActionKind, device: Device) {
+  const name = device.alias || device.id;
+  if (kind === 'enable') {
+    return {
+      title: '启用设备',
+      body: `允许 ${name} 使用现有密钥继续上报 GPU 指标。`,
+      confirmLabel: '确认启用',
+      tone: 'normal',
+      icon: <Power size={16} />
+    };
+  }
+  if (kind === 'disable') {
+    return {
+      title: '禁用设备',
+      body: `禁用后 ${name} 的上报请求会被服务端拒绝，客户端本机配置不会被修改。`,
+      confirmLabel: '确认禁用',
+      tone: 'warning',
+      icon: <PowerOff size={16} />
+    };
+  }
+  if (kind === 'rotate') {
+    return {
+      title: '轮换密钥',
+      body: `旧密钥会立即失效，需要在 ${name} 所在机器手动更新新密钥后才能继续上报。`,
+      confirmLabel: '确认轮换',
+      tone: 'warning',
+      icon: <KeyRound size={16} />
+    };
+  }
+  return {
+    title: '删除设备',
+    body: `删除后 ${name} 将从设备列表和最新 GPU 快照中移除，原 Agent 密钥会失效。`,
+    confirmLabel: '确认删除',
+    tone: 'danger',
+    icon: <Trash2 size={16} />
+  };
 }
 
 function SecretBox({ title, deviceId, value }: { title: string; deviceId: string; value: string }) {

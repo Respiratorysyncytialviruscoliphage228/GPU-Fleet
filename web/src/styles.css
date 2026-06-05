@@ -1003,6 +1003,115 @@ input:focus {
   justify-content: flex-end;
 }
 
+.danger-action {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 38%, var(--line));
+}
+
+.danger-action:hover {
+  background: var(--bad-soft);
+  border-color: color-mix(in srgb, var(--bad) 62%, var(--line));
+}
+
+.danger-primary {
+  background: var(--bad);
+  border-color: var(--bad);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--bad) 22%, transparent);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+  backdrop-filter: blur(14px);
+  animation: fade-in var(--motion-fast) var(--ease) both;
+}
+
+.confirm-dialog {
+  width: min(460px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--text) 22%, transparent);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  animation: panel-pop var(--motion-base) var(--ease-spring) both;
+}
+
+.confirm-dialog.warning {
+  border-color: color-mix(in srgb, var(--warn) 42%, var(--line));
+}
+
+.confirm-dialog.danger {
+  border-color: color-mix(in srgb, var(--bad) 48%, var(--line));
+}
+
+.confirm-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.confirm-dialog.warning .confirm-icon {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.confirm-dialog.danger .confirm-icon {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.confirm-copy span,
+.confirm-target span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.confirm-copy h2 {
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+.confirm-copy p {
+  line-height: 1.55;
+}
+
+.confirm-target {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+  min-width: 0;
+}
+
+.confirm-target strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .setup-panel {
   width: min(780px, 100%);
   padding: 24px;
