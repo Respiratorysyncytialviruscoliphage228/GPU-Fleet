@@ -321,6 +321,27 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	}
 }
 
+func TestLinuxRestartScriptReplacesBinaryBeforeWaitingForOldProcess(t *testing.T) {
+	req := updateRestartRequest{
+		CurrentExe:        "/opt/gpufleet/gpufleet-server",
+		NextExe:           "/opt/gpufleet/gpufleet-server.next",
+		Args:              []string{"-addr", "0.0.0.0:9008"},
+		WorkDir:           "/opt/gpufleet/repo",
+		PID:               1234,
+		RestartAt:         time.Now().UTC(),
+		ReplaceExecutable: true,
+	}
+	script := linuxRestartScript(req, "/opt/gpufleet/gpufleet-update-restart.log", "/tmp/gpufleet-update.sh")
+	moveIndex := strings.Index(script, "mv -f '/opt/gpufleet/gpufleet-server.next' '/opt/gpufleet/gpufleet-server'")
+	waitIndex := strings.Index(script, "while kill -0 1234")
+	if moveIndex < 0 || waitIndex < 0 || moveIndex > waitIndex {
+		t.Fatalf("expected Linux restart script to replace binary before waiting for old process, got:\n%s", script)
+	}
+	if !strings.Contains(script, "already_running=0") || !strings.Contains(script, "/proc/[0-9]*/exe") {
+		t.Fatalf("expected Linux restart script to avoid duplicate process starts, got:\n%s", script)
+	}
+}
+
 func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

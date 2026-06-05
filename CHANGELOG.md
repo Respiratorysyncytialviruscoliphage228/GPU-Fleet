@@ -4,6 +4,20 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
 
+## [0.1.7] - 2026-06-05
+
+### Changed / 变更
+
+- Linux 自动更新重启脚本改为先将新二进制原子替换到当前路径，再等待旧进程退出，避免 systemd 在替换前抢先拉起旧二进制。
+- Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.
+- 重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。
+- The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.
+
+### Fixed / 修复
+
+- 修复 `0.1.5` 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。
+- Fixed automatic updates from `0.1.5` and later where the Git checkout updated but systemd could continue running the old server binary.
+
 ## [0.1.6] - 2026-06-05
 
 ### Added / 新增

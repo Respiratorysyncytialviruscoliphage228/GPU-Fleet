@@ -565,28 +565,42 @@ func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) st
 	}
 	replace := ""
 	if req.ReplaceExecutable {
-		replace = fmt.Sprintf("mv -f %s %s\n", shQuote(req.NextExe), shQuote(req.CurrentExe))
+		replace = fmt.Sprintf("mv -f %s %s\nchmod 0755 %s\n", shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.CurrentExe))
 	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 sleep %.3f
+%s
 i=0
 while kill -0 %d 2>/dev/null && [ "$i" -lt 300 ]; do
   i=$((i + 1))
   sleep 0.1
 done
-%s
-cd %s
-nohup %s %s >> %s 2>&1 &
+already_running=0
+for exe in /proc/[0-9]*/exe; do
+  target=$(readlink "$exe" 2>/dev/null || true)
+  if [ "$target" = %s ]; then
+    already_running=1
+    break
+  fi
+done
+if [ "$already_running" -eq 0 ]; then
+  cd %s
+  nohup %s %s >> %s 2>&1 &
+else
+  printf 'restart process already running at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+fi
 printf 'restarted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
 rm -f %s
 `,
 		delay,
-		req.PID,
 		replace,
+		req.PID,
+		shQuote(req.CurrentExe),
 		shQuote(req.WorkDir),
 		shQuote(req.CurrentExe),
 		strings.Join(args, " "),
+		shQuote(logPath),
 		shQuote(logPath),
 		shQuote(logPath),
 		shQuote(helperPath),

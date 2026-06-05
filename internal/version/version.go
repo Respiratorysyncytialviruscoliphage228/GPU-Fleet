@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.6"
+	Version   = "0.1.7"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -60,6 +60,26 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.7",
+			Date:    "2026-06-05",
+			Title:   "修复 Linux 自动更新重启竞态",
+			TitleEN: "Fix Linux automatic update restart race",
+			Changed: []string{
+				"Linux 自动更新重启脚本改为先将新二进制原子替换到当前路径，再等待旧进程退出，避免 systemd 在替换前抢先拉起旧二进制。",
+				"重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。",
+			},
+			ChangedEN: []string{
+				"Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.",
+				"The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.",
+			},
+			Fixed: []string{
+				"修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。",
+			},
+			FixedEN: []string{
+				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
+			},
+		},
 		{
 			Version: "0.1.6",
 			Date:    "2026-06-05",
