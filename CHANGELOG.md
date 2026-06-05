@@ -12,6 +12,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.
 - 重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。
 - The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.
+- GPU 详情和总览卡片布局进一步压缩，长型号、趋势标题、功耗/显存说明和 Compute 信息不再挤压卡片内容。
+- GPU detail and overview card layouts are more compact so long model names, trend labels, power/memory captions, and Compute metadata no longer crowd the card contents.
 
 ### Fixed / 修复
 

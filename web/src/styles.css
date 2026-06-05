@@ -498,13 +498,18 @@ input:focus-visible {
 .status-dot.offline { background: var(--offline); box-shadow: 0 0 0 4px var(--offline-soft); }
 
 .gpu-card-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .gpu-card-meta span {
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: 88px;
+  max-width: 168px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
@@ -516,6 +521,11 @@ input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+
+.gpu-card-meta span:last-child {
+  min-width: max-content;
+  max-width: none;
 }
 
 .gpu-trend-grid {
@@ -550,17 +560,24 @@ input:focus-visible {
 
 .trend-head {
   min-width: 0;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
+}
+
+.trend-head > div {
+  min-width: 0;
 }
 
 .trend-head span {
   display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -569,6 +586,7 @@ input:focus-visible {
   margin-top: 6px;
   font-size: 16px;
   line-height: 1.2;
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
@@ -576,7 +594,8 @@ input:focus-visible {
   margin-top: 0;
   line-height: 1.25;
   text-align: right;
-  max-width: 96px;
+  max-width: 74px;
+  font-size: 11px;
 }
 
 .sparkline-wrap {
