@@ -1761,7 +1761,8 @@ input[type="file"] {
   .content { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
   .gpu-trend-grid,
   .gpu-detail-trend-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
   }
   .top-actions {
     width: 100%;
@@ -1775,7 +1776,42 @@ input[type="file"] {
     padding: 12px;
   }
   .trend-tile {
-    min-height: 138px;
+    min-height: 108px;
+    grid-template-rows: auto 46px;
+    gap: 5px;
+    padding: 8px;
+  }
+  .trend-head {
+    gap: 6px;
+  }
+  .trend-head span {
+    font-size: 11px;
+  }
+  .trend-head strong {
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  .trend-head p {
+    max-width: 58px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+  .sparkline-wrap {
+    height: 46px;
+  }
+  .spark-line {
+    stroke-width: 2.4;
+  }
+  .spark-point {
+    stroke-width: 2;
+  }
+  .spark-tooltip {
+    min-width: 74px;
+    max-width: 106px;
+    padding: 6px 7px;
+  }
+  .spark-tooltip strong {
+    font-size: 12px;
   }
   .update-card .operation-head {
     grid-template-columns: auto minmax(0, 1fr);
