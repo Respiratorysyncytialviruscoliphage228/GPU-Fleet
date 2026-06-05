@@ -561,7 +561,7 @@ input:focus-visible {
 .trend-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content);
   align-items: flex-start;
   column-gap: 6px;
   row-gap: 3px;
@@ -604,8 +604,8 @@ input:focus-visible {
   margin-top: 0;
   line-height: 1.25;
   text-align: right;
-  max-width: 64px;
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .sparkline-wrap {
@@ -864,11 +864,8 @@ input:focus-visible {
 }
 
 .gpu-detail-trend-grid .trend-head p {
-  max-width: 58px;
-  overflow: hidden;
   font-size: 11px;
   line-height: 1.2;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2042,7 +2039,6 @@ input[type="file"] {
     font-size: 13px;
   }
   .trend-head p {
-    max-width: 58px;
     font-size: 10px;
     line-height: 1.2;
   }
