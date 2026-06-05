@@ -1736,6 +1736,46 @@ input:focus {
   margin-top: -4px;
 }
 
+.update-progress-backdrop {
+  z-index: 86;
+}
+
+.update-progress-dialog {
+  width: min(560px, 100%);
+}
+
+.update-progress-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-progress-head > strong {
+  color: var(--accent-strong);
+  font-size: 20px;
+}
+
+.update-progress-spinner {
+  animation: update-spin 1.2s linear infinite;
+}
+
+.update-progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+}
+
+.update-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--good));
+  transition: width var(--motion-base) var(--ease);
+}
+
 .update-progress {
   display: grid;
   gap: 7px;
@@ -1930,6 +1970,11 @@ input[type="file"] {
 @keyframes spark-draw {
   from { stroke-dashoffset: 360; }
   to { stroke-dashoffset: 0; }
+}
+
+@keyframes update-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes tooltip-in {

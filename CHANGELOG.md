@@ -24,6 +24,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - 24-hour stats metadata now also prefers device names, reducing direct device ID display.
 - 总览和 GPU 监控页的汇总指标卡新增右侧迷你曲线，用于展示各 GPU 当前利用率、显存和功耗分布。
 - Overview and GPU monitoring aggregate metric cards now include right-side sparklines for current per-GPU utilization, memory, and power distribution.
+- 在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。
+- Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.
 
 ### Fixed / 修复
 

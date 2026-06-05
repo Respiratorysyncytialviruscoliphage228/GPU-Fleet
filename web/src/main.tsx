@@ -983,19 +983,22 @@ function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeries {
-  const buckets = new Map<number, { utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
+  const buckets = new Map<number, { timestamp?: string; utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
   for (const { item, points } of batches) {
-    const source = points.length ? points : [{
+    const source: GPUSeriesPoint[] = points.length ? points : [{
       timestamp: item.timestamp,
       utilization_gpu_percent: item.gpu.utilization_gpu_percent,
       memory_used_bytes: item.gpu.memory_used_bytes,
       memory_total_bytes: item.gpu.memory_total_bytes,
       power_draw_watts: item.gpu.power_draw_watts
     }];
-    for (const point of source) {
+    for (const [index, point] of source.entries()) {
       const time = new Date(point.timestamp).getTime();
       if (!Number.isFinite(time)) continue;
-      const row = buckets.get(time) ?? { utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      const row = buckets.get(index) ?? { timestamp: point.timestamp, utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      if (!row.timestamp || new Date(point.timestamp).getTime() > new Date(row.timestamp).getTime()) {
+        row.timestamp = point.timestamp;
+      }
       if (typeof point.utilization_gpu_percent === 'number' && Number.isFinite(point.utilization_gpu_percent)) {
         row.utilizationTotal += point.utilization_gpu_percent;
         row.utilizationCount += 1;
@@ -1006,14 +1009,14 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
       if (typeof point.power_draw_watts === 'number' && Number.isFinite(point.power_draw_watts)) {
         row.power += point.power_draw_watts;
       }
-      buckets.set(time, row);
+      buckets.set(index, row);
     }
   }
-  const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right);
+  const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right).map(([, row]) => row);
   return {
-    utilization: rows.map(([time, row]) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: new Date(time).toISOString() })),
-    memory: rows.map(([time, row]) => ({ value: row.memory, timestamp: new Date(time).toISOString() })),
-    power: rows.map(([time, row]) => ({ value: row.power, timestamp: new Date(time).toISOString() }))
+    utilization: rows.map((row) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: row.timestamp })),
+    memory: rows.map((row) => ({ value: row.memory, timestamp: row.timestamp })),
+    power: rows.map((row) => ({ value: row.power, timestamp: row.timestamp }))
   };
 }
 
@@ -1890,14 +1893,30 @@ function UpdateProgress({ step }: { step: number }) {
     '服务端正在自动重启',
     '等待服务端恢复，恢复后自动刷新'
   ];
+  const activeLabel = stages[Math.max(0, Math.min(stages.length - 1, step - 1))];
+  const percent = Math.round((Math.max(1, Math.min(step, stages.length)) / stages.length) * 100);
   return (
-    <div className="update-progress" data-testid="update-progress">
-      {stages.map((label, index) => (
-        <div className={index + 1 < step ? 'done' : index + 1 === step ? 'active' : ''} key={label}>
-          <span>{index + 1}</span>
-          <p>{label}</p>
+    <div className="modal-backdrop update-progress-backdrop" role="presentation" data-testid="update-progress">
+      <section className="confirm-dialog update-progress-dialog" role="status" aria-live="polite">
+        <div className="update-progress-head">
+          <div className="confirm-icon update-progress-spinner"><Download size={18} /></div>
+          <div className="confirm-copy">
+            <span>在线更新</span>
+            <h2>正在拉取并重启</h2>
+            <p>{activeLabel}</p>
+          </div>
+          <strong>{percent}%</strong>
         </div>
-      ))}
+        <div className="update-progress-bar"><span style={{ width: `${percent}%` }} /></div>
+        <div className="update-progress">
+          {stages.map((label, index) => (
+            <div className={index + 1 < step ? 'done' : index + 1 === step ? 'active' : ''} key={label}>
+              <span>{index + 1}</span>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
