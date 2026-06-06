@@ -126,6 +126,38 @@ func TestVersionAPIRequiresSession(t *testing.T) {
 	}
 }
 
+func TestVersionAPIReadsRepoChangelog(t *testing.T) {
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "CHANGELOG.md"), []byte(`# Changelog
+
+## [0.1.7] - 2026-06-06
+
+### Title / 标题
+
+- zh-CN: 仓库变更记录
+- en-US: Repository changelog
+
+### Fixed / 修复
+
+- zh-CN: 设置页读取最新仓库 changelog。
+- en-US: Settings reads the latest repository changelog.
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), repoDir)
+	handler := app.Handler()
+
+	var info version.ReleaseInfo
+	doJSON(t, handler, http.MethodGet, "/api/v1/version", nil, loginCookie(t, handler), http.StatusOK, &info)
+	if len(info.Changelog) == 0 || info.Changelog[0].Title != "仓库变更记录" || info.Changelog[0].TitleEN != "Repository changelog" {
+		t.Fatalf("expected repo changelog in version response, got %+v", info.Changelog)
+	}
+}
+
 func TestUpdateAPIRequiresSessionAndHandlesUnsupportedRepo(t *testing.T) {
 	root := t.TempDir()
 	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), filepath.Join(root, "not-a-repo"))

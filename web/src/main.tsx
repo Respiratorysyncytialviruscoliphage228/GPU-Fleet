@@ -2214,9 +2214,14 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {
   const { language } = useI18n();
-  const latest = release?.changelog?.[0];
+  const [expanded, setExpanded] = useState(false);
+  const allEntries = release?.changelog ?? [];
+  const entries = allEntries.slice(0, expanded ? 3 : 1);
   const versionText = release?.version ? `v${release.version}` : loading ? '加载中' : '-';
   const commitText = release?.commit && release.commit !== 'dev' ? release.commit : 'dev';
+  const moreCount = Math.max(0, Math.min(3, allEntries.length) - 1);
+  const expandLabel = language === 'en-US' ? `Show ${moreCount} older version${moreCount > 1 ? 's' : ''}` : `展开 ${moreCount} 个历史版本`;
+  const collapseLabel = language === 'en-US' ? 'Collapse history' : '收起历史版本';
 
   return (
     <article className="panel setting-operation project-card release-card" data-testid="settings-project">
@@ -2256,7 +2261,17 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
           <BookOpenText size={16} />
           <span>最近变更</span>
         </div>
-        {latest ? <ChangelogEntryView entry={latest} language={language} /> : <p>{error || '正在读取版本信息'}</p>}
+        {entries.length > 0 ? (
+          <div className="changelog-entry-list">
+            {entries.map((entry) => <ChangelogEntryView entry={entry} language={language} key={`${entry.version}-${entry.date}`} />)}
+            {allEntries.length > 1 && (
+              <button className="secondary changelog-toggle" type="button" onClick={() => setExpanded((value) => !value)}>
+                <BookOpenText size={15} />
+                {expanded ? collapseLabel : expandLabel}
+              </button>
+            )}
+          </div>
+        ) : <p>{error || '正在读取版本信息'}</p>}
       </div>
       <a className="secondary action-button" href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">
         <Github size={16} />
@@ -2296,7 +2311,7 @@ function ChangelogList({ label, items }: { label: string; items?: string[] }) {
     <div className="changelog-group">
       <span>{label}</span>
       <ul>
-        {items.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+        {items.map((item) => <li key={item}>{item}</li>)}
       </ul>
     </div>
   );
@@ -2564,10 +2579,12 @@ function GuestSettings({ service, onDone }: { service?: ServiceStatus; onDone: (
       <div className="operation-head">
         <div className="operation-icon"><Activity size={18} /></div>
         <div>
-          <h2>{t('访客功能')}</h2>
+          <div className="operation-title-row">
+            <h2>{t('访客功能')}</h2>
+            <span className={`pill ${enabled ? 'good' : 'warn'}`}>{enabled ? t('已开启') : t('已关闭')}</span>
+          </div>
           <p>{enabled ? t('登录页显示访客入口，仅开放脱敏总览') : t('关闭后访客入口和访客总览不可访问')}</p>
         </div>
-        <span className={`pill ${enabled ? 'good' : 'warn'}`}>{enabled ? t('已开启') : t('已关闭')}</span>
       </div>
       <div className="settings-button-row">
         <label className="switch-row">
@@ -2579,7 +2596,6 @@ function GuestSettings({ service, onDone }: { service?: ServiceStatus; onDone: (
           {t('访客记录')}
         </button>
       </div>
-      {enabled && <p className="notice guest-url">/guest</p>}
       {message && <p className={message.includes('已') || message.includes('enabled') || message.includes('disabled') ? 'notice' : 'error'}>{message}</p>}
       {recordsOpen && <GuestRecordsDialog onClose={() => setRecordsOpen(false)} />}
     </article>

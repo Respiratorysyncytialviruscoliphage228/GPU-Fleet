@@ -1670,6 +1670,17 @@ input:focus {
   white-space: nowrap;
 }
 
+.operation-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.operation-title-row .pill {
+  flex: 0 0 auto;
+}
+
 .operation-icon {
   width: 34px;
   height: 34px;
@@ -1777,6 +1788,20 @@ input:focus {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.changelog-entry-list {
+  display: grid;
+  gap: 14px;
+}
+
+.changelog-entry-list .changelog-entry + .changelog-entry {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.changelog-toggle {
+  width: fit-content;
 }
 
 .changelog-entry > div:first-child {

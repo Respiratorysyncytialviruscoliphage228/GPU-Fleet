@@ -314,7 +314,44 @@ func (a *App) handleVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeJSON(w, http.StatusOK, version.CurrentFromChangelog(filepath.Join(a.config.RepoDir, "CHANGELOG.md")))
+	writeJSON(w, http.StatusOK, a.releaseInfo())
+}
+
+func (a *App) releaseInfo() version.ReleaseInfo {
+	for _, path := range a.changelogPaths() {
+		if entries, err := version.ChangelogFromFile(path); err == nil && len(entries) > 0 {
+			info := version.Current()
+			info.Changelog = entries
+			return info
+		}
+	}
+	return version.Current()
+}
+
+func (a *App) changelogPaths() []string {
+	seen := map[string]bool{}
+	var paths []string
+	add := func(dir string) {
+		if strings.TrimSpace(dir) == "" {
+			return
+		}
+		path, err := filepath.Abs(filepath.Join(dir, "CHANGELOG.md"))
+		if err != nil || seen[path] {
+			return
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	add(a.config.RepoDir)
+	if wd, err := os.Getwd(); err == nil {
+		add(wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		add(filepath.Dir(exe))
+	}
+	add("/opt/gpufleet/repo")
+	add("/opt/gpufleet")
+	return paths
 }
 
 func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {
