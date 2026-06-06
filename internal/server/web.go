@@ -620,12 +620,16 @@ const dashboardHTML = `<!doctype html>
     .modal-backdrop {
       position: fixed;
       inset: 0;
+      width: 100vw;
+      min-height: 100vh;
+      min-height: 100dvh;
       z-index: 80;
       display: grid;
       place-items: center;
       padding: 18px;
       background: rgba(22, 33, 44, .28);
       backdrop-filter: blur(14px);
+      isolation: isolate;
     }
     .confirm-dialog {
       width: min(460px, 100%);
@@ -681,6 +685,15 @@ const dashboardHTML = `<!doctype html>
       justify-content: flex-end;
       gap: 10px;
       flex-wrap: wrap;
+    }
+    #modalRoot {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      pointer-events: none;
+    }
+    #modalRoot .modal-backdrop {
+      pointer-events: auto;
     }
     .settings-page, .settings-status, .setting-operation { display: grid; gap: 14px; }
     .settings-kpi-grid {
@@ -1306,7 +1319,7 @@ const dashboardHTML = `<!doctype html>
       if (action.dataset.confirmAction === 'confirm') await runDeviceConfirm();
     });
     document.addEventListener('mousedown', (event) => {
-      if (event.target && event.target.id === 'modalRoot') closeDeviceConfirm();
+      if (event.target && event.target.classList && event.target.classList.contains('modal-backdrop')) closeDeviceConfirm();
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeDeviceConfirm();

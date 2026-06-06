@@ -49,6 +49,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Added guest access with a settings-controlled login entry; the guest page only shows a sanitized GPU overview without processes, 24-hour stats, or admin APIs, and settings now include guest visit records with browser fingerprint summaries.
 - zh-CN: 设置页更新记录默认只展示当前版本，更多更新记录改为弹窗查看完整 CHANGELOG；访客记录弹窗改为固定头部和内部滚动列表，长记录不会撑出屏幕。
 - en-US: Settings now shows only the current version by default, opens the full CHANGELOG in a dialog from the More changelog button, and keeps guest visit records scrollable inside the dialog without overflowing the viewport.
+- zh-CN: 全面统一设置页、设备操作、更新提示、更新进度、重启、访客记录和内置 fallback 面板的弹窗遮罩，确保弹窗始终挂载到全屏视口并使用一致的背景模糊。
+- en-US: Unified dialog backdrops for settings, device actions, update notices, update progress, restarts, guest records, and the built-in fallback panel so dialogs always cover the full viewport with consistent background blur.
 
 ### Fixed / 修复
 

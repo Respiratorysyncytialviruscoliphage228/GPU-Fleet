@@ -1285,12 +1285,16 @@ input:focus {
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100dvh;
   z-index: 80;
   display: grid;
   place-items: center;
   padding: 18px;
   background: color-mix(in srgb, var(--text) 28%, transparent);
   backdrop-filter: blur(14px);
+  isolation: isolate;
   animation: fade-in var(--motion-fast) var(--ease) both;
 }
 

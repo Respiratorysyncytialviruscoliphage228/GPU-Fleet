@@ -1547,7 +1547,7 @@ function DeviceActionConfirm({
   if (!confirm) return null;
   const copy = deviceActionCopy(confirm.kind, confirm.device);
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onCancel();
     }}>
@@ -1570,7 +1570,8 @@ function DeviceActionConfirm({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1586,7 +1587,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
   const title = isCertificate ? t('HTTPS 证书已启用') : isRestart ? t('服务已重启') : t('版本已更新');
   const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : isRestart ? t('服务端已重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" role="presentation">
       <section className="confirm-dialog update-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="update-notice-title" data-testid="update-notice-dialog">
         <div className="confirm-icon"><CheckCircle2 size={22} /></div>
@@ -1612,7 +1613,8 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 

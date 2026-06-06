@@ -428,12 +428,13 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	assertSignedHeartbeat(t, handler, created.Device.ID, created.Secret, http.StatusUnauthorized)
 	assertSignedHeartbeat(t, handler, created.Device.ID, rotated.Secret, http.StatusAccepted)
 
+	sampleAt := time.Now().UTC()
 	util := 55.0
 	if err := app.metrics.AppendBatch(model.SampleBatch{
 		DeviceID:     created.Device.ID,
 		AgentVersion: model.AgentVersion,
 		Samples: []model.GPUSample{{
-			Timestamp: time.Now().UTC(),
+			Timestamp: sampleAt,
 			GPUs: []model.GPUStatus{{
 				GPUID:                 "0",
 				UUIDHash:              "sensitive-uuid",
@@ -449,7 +450,7 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	}
 	if err := app.processes.Replace(model.ProcessBatch{
 		DeviceID:  created.Device.ID,
-		Timestamp: time.Now().UTC(),
+		Timestamp: sampleAt,
 		Processes: []model.ProcessSnapshot{{
 			GPUID:           "0",
 			PID:             1234,
@@ -493,7 +494,7 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 		t.Fatalf("guest overview leaked sensitive data: %+v", guestOverview)
 	}
 	var guestSeries []SeriesPoint
-	guestSeriesPath := "/api/v1/guest/gpus/0/series?device_id=" + url.QueryEscape(guestOverview.LatestGPUs[0].DeviceID) + "&hours=1"
+	guestSeriesPath := "/api/v1/guest/gpus/0/series?device_id=" + url.QueryEscape(guestOverview.LatestGPUs[0].DeviceID) + "&hours=2"
 	req = httptest.NewRequest(http.MethodGet, guestSeriesPath, nil)
 	req.Header.Set("X-GPUFleet-Guest-Fingerprint", "fp-test")
 	rec = httptest.NewRecorder()
