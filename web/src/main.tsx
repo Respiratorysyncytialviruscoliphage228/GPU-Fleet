@@ -836,8 +836,9 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
   const deviceColor = deviceBorderColor(item.device_id);
   const series = useQuery({
-    queryKey: ['gpu-series', item.device_id, gpu.gpu_id, 1],
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1),
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
+    staleTime: 20_000,
     refetchInterval: 30000,
     retry: false
   });
@@ -971,21 +972,31 @@ type AggregateSeries = AggregateSeriesData & {
 };
 
 function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
+  const query = useQueryClient();
   const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}`).sort(), [items]);
   const series = useQuery({
     queryKey: ['aggregate-gpu-series', keys],
     queryFn: async () => {
       const batches = await Promise.all(items.map(async (item) => ({
         item,
-        points: await getGPUSeries(item.device_id, item.gpu.gpu_id, 1)
+        points: await query.fetchQuery({
+          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1),
+          queryFn: () => getGPUSeries(item.device_id, item.gpu.gpu_id, 1),
+          staleTime: 20_000
+        })
       })));
       return buildAggregateSeries(batches);
     },
     enabled: items.length > 0,
+    staleTime: 20_000,
     refetchInterval: 30000,
     retry: false
   });
   return series.data ? { ...series.data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
+}
+
+function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number) {
+  return ['gpu-series', deviceID, gpuID, hours] as const;
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {
@@ -1169,8 +1180,9 @@ function GPUCard({ item }: { item: StoredGPU }) {
   const pcieMax = [gpu.pcie_link_generation_max ? `Gen ${gpu.pcie_link_generation_max}` : '', gpu.pcie_link_width_max ? `x${gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
   const deviceColor = deviceBorderColor(item.device_id);
   const series = useQuery({
-    queryKey: ['gpu-series-detail', item.device_id, gpu.gpu_id, 1],
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1),
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
+    staleTime: 20_000,
     refetchInterval: 30000,
     retry: false
   });
@@ -1457,15 +1469,6 @@ function DeviceActionConfirm({
 function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotice; onClose: () => void }) {
   const { t } = useI18n();
 
-  useEffect(() => {
-    if (!notice) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [notice, onClose]);
-
   if (!notice) return null;
   const isCertificate = notice.kind === 'certificate';
   const from = shortHash(notice.previous_commit);
@@ -1475,9 +1478,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
   const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div className="modal-backdrop" role="presentation">
       <section className="confirm-dialog update-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="update-notice-title" data-testid="update-notice-dialog">
         <div className="confirm-icon"><CheckCircle2 size={22} /></div>
         <div className="confirm-copy">
@@ -1596,7 +1597,7 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
     const activeRows = statRows.slice(0, 8);
     const timers = activeRows.map((row, index) => window.setTimeout(() => {
       void prefetchStatsSeries(query, row);
-    }, index * 160));
+    }, 2500 + index * 220));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [query, statRows]);
   useEffect(() => {
