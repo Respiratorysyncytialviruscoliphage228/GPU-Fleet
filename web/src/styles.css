@@ -2175,9 +2175,6 @@ input[type="file"] {
   nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .gpu-detail-grid {
-    grid-template-columns: 1fr;
-  }
   .setup-grid,
   .setup-file-row,
   .settings-workbench,
@@ -2238,6 +2235,18 @@ input[type="file"] {
   .trend-head p {
     font-size: 10px;
     line-height: 1.2;
+  }
+  .gpu-detail-grid {
+    gap: 6px;
+  }
+  .gpu-detail-grid div {
+    padding: 6px;
+  }
+  .gpu-detail-grid span {
+    font-size: 10px;
+  }
+  .gpu-detail-grid strong {
+    font-size: 11px;
   }
   .sparkline-wrap {
     height: 46px;
