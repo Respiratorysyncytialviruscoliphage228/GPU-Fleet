@@ -108,6 +108,7 @@ export type ServiceStatus = {
   https_enabled: boolean;
   language: AppLanguage;
   update_proxy?: string;
+  min_free_bytes: number;
   cert_not_after?: string;
   config_revision: number;
   updated_at?: string;
@@ -392,10 +393,10 @@ export function changePassword(currentPassword: string, nextPassword: string) {
   });
 }
 
-export function updateServerConfig(port: number) {
+export function updateServerConfig(payload: { port?: number; min_free_mb?: number }) {
   return request<ServiceMutationResponse>('/api/v1/admin/server-config', {
     method: 'POST',
-    body: JSON.stringify({ port })
+    body: JSON.stringify(payload)
   });
 }
 

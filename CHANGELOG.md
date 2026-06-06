@@ -39,6 +39,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Improved mobile GPU metric card layouts so memory and power sparklines no longer squeeze text, while GPU-page top cards stay in a more compact two-column layout on small screens.
 - zh-CN: GPU 详细状态的参数网格在移动端保持两列紧凑展示，减少单张 GPU 卡片的纵向占用。
 - en-US: GPU detail cards now keep their parameter grid in a compact two-column layout on mobile, reducing vertical space per GPU card.
+- zh-CN: 在线更新卡片移除超前、运行提交和远端字段，更新按钮改为二次确认后执行，并新增可立即生效的磁盘预留空间设置。
+- en-US: The online update card now removes ahead, running commit, and remote fields, requires confirmation before updating, and adds an immediately applied disk reserve setting.
 
 ### Fixed / 修复
 

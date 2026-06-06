@@ -51,6 +51,7 @@ type ServiceConfig struct {
 	HTTPS          bool      `json:"https"`
 	Language       string    `json:"language,omitempty"`
 	UpdateProxy    string    `json:"update_proxy,omitempty"`
+	MinFreeBytes   uint64    `json:"min_free_bytes,omitempty"`
 	CertPath       string    `json:"cert_path,omitempty"`
 	KeyPath        string    `json:"key_path,omitempty"`
 	CertNotAfter   time.Time `json:"cert_not_after,omitempty"`
@@ -336,6 +337,18 @@ func (s *MetadataStore) UpdateServicePort(port int) (ServiceConfig, error) {
 	s.updatePortLocked(port)
 	s.bumpServiceConfigLocked()
 	s.addAuditLocked("service_port_changed", fmt.Sprintf("configured service port %d", port))
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateMinFreeBytes(minFreeBytes uint64) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if minFreeBytes == 0 {
+		return ServiceConfig{}, errors.New("minimum disk reserve must be greater than 0")
+	}
+	s.data.Service.MinFreeBytes = minFreeBytes
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("service_disk_reserve_changed", fmt.Sprintf("changed minimum free disk reserve to %d bytes", minFreeBytes))
 	return s.data.Service, s.saveLocked()
 }
 

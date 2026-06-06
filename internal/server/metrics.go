@@ -261,6 +261,12 @@ func (s *MetricsStore) DiskStatus() (DiskStatus, error) {
 	}, nil
 }
 
+func (s *MetricsStore) SetMinFreeBytes(minFreeBytes uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.minFree = minFreeBytes
+}
+
 func (s *MetricsStore) ensureWritable() error {
 	status, err := s.DiskStatus()
 	if err != nil {

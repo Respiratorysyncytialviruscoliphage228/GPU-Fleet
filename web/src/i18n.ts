@@ -196,7 +196,11 @@ const en: Record<string, string> = {
   '检查中': 'Checking',
   '重启中': 'Restarting',
   '检查更新': 'Check update',
+  '更新': 'Update',
   '更新中': 'Updating',
+  '确认更新服务端？': 'Confirm server update?',
+  '服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。': 'The server will check dependencies, build the remote commit, fast-forward pull, and restart automatically after success. Progress is shown while the page waits for recovery.',
+  '确认更新': 'Confirm update',
   '拉取并重启': 'Pull and restart',
   '重建并重启': 'Rebuild and restart',
   '更新代理': 'Update proxy',
@@ -270,6 +274,10 @@ const en: Record<string, string> = {
   '数据库下载': 'Database Download',
   '数据库大小': 'Database size',
   '下载数据库': 'Download database',
+  '预留空间 MiB': 'Reserved space MiB',
+  '保存预留': 'Save reserve',
+  '磁盘预留至少 64 MiB': 'Disk reserve must be at least 64 MiB',
+  '磁盘预留已保存': 'Disk reserve saved',
   '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.',
   'language endpoint not found; rebuild and restart the server binary': 'Language endpoint not found; rebuild and restart the server binary.'
 };

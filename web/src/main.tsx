@@ -1744,7 +1744,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <SettingStat label="当前协议" value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? '证书已配置' : '未启用证书'} />
           <SettingStat label="访问端口" value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
           <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={certCaption} />
-          <SettingStat label="磁盘预留" value={fmtBytes(min)} caption={`空闲 ${fmtBytes(data?.disk.free_bytes)}`} />
+          <SettingStat label="磁盘预留" value={fmtBytes(service?.min_free_bytes ?? min)} caption={`空闲 ${fmtBytes(data?.disk.free_bytes)}`} />
         </div>
       </section>
 
@@ -1784,6 +1784,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
             </div>
           </div>
           <DatabaseSettings data={data} />
+          <DiskReserveSettings data={data} onDone={refreshOverview} />
           <UpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
@@ -1813,6 +1814,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const { t } = useI18n();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [waitingForRestart, setWaitingForRestart] = useState(() => hasPendingUpdate());
   const [proxyURL, setProxyURL] = useState(service?.update_proxy || '');
   const [proxyMessage, setProxyMessage] = useState('');
@@ -1877,6 +1879,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   }
 
   async function pull() {
+    setConfirmOpen(false);
     setMessage('');
     setBusy(true);
     setProgressStep(1);
@@ -1953,10 +1956,6 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           <span>落后</span>
           <strong>{status?.behind ?? 0}</strong>
         </div>
-        <div>
-          <span>超前</span>
-          <strong>{status?.ahead ?? 0}</strong>
-        </div>
       </div>
 
       <div className="update-meta">
@@ -1967,14 +1966,6 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         <div>
           <span>仓库版本</span>
           <strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong>
-        </div>
-        <div>
-          <span>运行提交</span>
-          <strong title={status?.running_commit}>{shortHash(status?.running_commit)}</strong>
-        </div>
-        <div>
-          <span>远端</span>
-          <strong title={status?.remote}>{status?.remote || '-'}</strong>
         </div>
         <div>
           <span>检查时间</span>
@@ -1999,14 +1990,61 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           <RefreshCw size={16} />
           {update.isFetching ? '检查中' : '检查更新'}
         </button>
-        <button className="primary compact" type="button" onClick={pull} disabled={!canApply}>
+        <button className="primary compact" type="button" onClick={() => setConfirmOpen(true)} disabled={!canApply}>
           <Download size={16} />
-          {busy ? '更新中' : status?.binary_outdated && !status.available ? '重建并重启' : '拉取并重启'}
+          {busy ? '更新中' : '更新'}
         </button>
       </div>
+      {confirmOpen && (
+        <UpdateConfirmDialog
+          status={status}
+          busy={busy}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={pull}
+        />
+      )}
       {progressStep > 0 && <UpdateProgress step={progressStep} />}
       {(message || state.message) && <p className={message.includes('已') || message.includes('正在自动重启') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
     </article>
+  );
+}
+
+function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: UpdateStatus; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <section className="confirm-dialog warning" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" data-testid="update-confirm-dialog">
+        <div className="confirm-icon"><Download size={22} /></div>
+        <div className="confirm-copy">
+          <span>在线更新</span>
+          <h2 id="update-confirm-title">确认更新服务端？</h2>
+          <p>服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。</p>
+        </div>
+        <div className="confirm-target update-notice-grid">
+          <div><span>当前提交</span><strong>{shortHash(status?.local_commit)}</strong></div>
+          <div><span>远端提交</span><strong>{shortHash(status?.remote_commit)}</strong></div>
+          <div><span>落后</span><strong>{status?.behind ?? 0}</strong></div>
+          <div><span>仓库版本</span><strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong></div>
+        </div>
+        <div className="confirm-actions">
+          <button className="secondary" type="button" onClick={onCancel} disabled={busy}>取消</button>
+          <button className="primary compact" type="button" onClick={onConfirm} disabled={busy}>
+            <Download size={16} />
+            {busy ? '更新中' : '确认更新'}
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -2234,7 +2272,7 @@ function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: ()
     }
     setBusy(true);
     try {
-      const result = await updateServerConfig(parsed);
+      const result = await updateServerConfig({ port: parsed });
       setMessage(result.restart_required ? '端口已保存，重启后生效' : '端口已保存');
       await onDone();
     } catch (err) {
@@ -2411,6 +2449,54 @@ function DatabaseSettings({ data }: { data?: Overview }) {
         <Download size={16} />
         下载数据库
       </a>
+    </article>
+  );
+}
+
+function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => Promise<void> }) {
+  const currentBytes = data?.service.min_free_bytes ?? data?.min_free_space_bytes ?? data?.disk.min_free_bytes ?? 800 * 1024 * 1024;
+  const [minFreeMB, setMinFreeMB] = useState(String(Math.round(currentBytes / 1024 / 1024)));
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setMinFreeMB(String(Math.round(currentBytes / 1024 / 1024)));
+  }, [currentBytes]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    const parsed = Number(minFreeMB);
+    if (!Number.isInteger(parsed) || parsed < 64) {
+      setMessage('磁盘预留至少 64 MiB');
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateServerConfig({ min_free_mb: parsed });
+      setMessage('磁盘预留已保存');
+      await onDone();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'disk reserve update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-disk-reserve">
+      <div className="operation-head">
+        <div className="operation-icon"><Database size={18} /></div>
+        <div>
+          <h2>磁盘预留</h2>
+          <p>{fmtBytes(currentBytes)} · 空闲 {fmtBytes(data?.disk.free_bytes)}</p>
+        </div>
+      </div>
+      <form className="settings-form inline" onSubmit={submit}>
+        <label>预留空间 MiB<input value={minFreeMB} onChange={(event) => setMinFreeMB(event.target.value)} type="number" min={64} step={64} inputMode="numeric" /></label>
+        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存预留'}</button>
+      </form>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
     </article>
   );
 }

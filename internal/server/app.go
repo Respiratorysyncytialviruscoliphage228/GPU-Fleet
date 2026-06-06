@@ -101,6 +101,11 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	if err := meta.EnsureServiceConfig(config.Addr); err != nil {
 		return nil, "", err
 	}
+	if saved := meta.ServiceConfig(); saved.MinFreeBytes > 0 {
+		config.MinFreeBytes = saved.MinFreeBytes
+	} else if _, err := meta.UpdateMinFreeBytes(config.MinFreeBytes); err != nil {
+		return nil, "", err
+	}
 	metrics, err := NewMetricsStore(filepath.Join(config.DataDir, "metrics"), config.MinFreeBytes, config.Retention)
 	if err != nil {
 		return nil, "", err
@@ -413,16 +418,35 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Port int `json:"port"`
+		Port      int `json:"port"`
+		MinFreeMB int `json:"min_free_mb"`
 	}
 	if err := decodeJSON(r, &body, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	config, err := a.meta.UpdateServicePort(body.Port)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	config := a.meta.ServiceConfig()
+	var err error
+	if body.Port > 0 {
+		config, err = a.meta.UpdateServicePort(body.Port)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if body.MinFreeMB > 0 {
+		if body.MinFreeMB < 64 {
+			writeError(w, http.StatusBadRequest, "minimum disk reserve must be at least 64 MiB")
+			return
+		}
+		minFreeBytes := uint64(body.MinFreeMB) * 1024 * 1024
+		config, err = a.meta.UpdateMinFreeBytes(minFreeBytes)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.config.MinFreeBytes = minFreeBytes
+		a.metrics.SetMinFreeBytes(minFreeBytes)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
@@ -1189,6 +1213,9 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 	if config.Addr == "" {
 		config.Addr = a.config.Addr
 	}
+	if config.MinFreeBytes == 0 {
+		config.MinFreeBytes = a.config.MinFreeBytes
+	}
 	status := serviceStatus{
 		CurrentAddr:       a.config.Addr,
 		CurrentScheme:     a.Scheme(),
@@ -1197,6 +1224,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		HTTPSEnabled:      config.HTTPS,
 		Language:          config.Language,
 		UpdateProxy:       config.UpdateProxy,
+		MinFreeBytes:      config.MinFreeBytes,
 		CertNotAfter:      config.CertNotAfter,
 		ConfigRevision:    config.ConfigRevision,
 		UpdatedAt:         config.UpdatedAt,
@@ -1259,6 +1287,7 @@ type serviceStatus struct {
 	HTTPSEnabled      bool      `json:"https_enabled"`
 	Language          string    `json:"language"`
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
+	MinFreeBytes     uint64    `json:"min_free_bytes"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
 	ConfigRevision    int       `json:"config_revision"`
 	UpdatedAt         time.Time `json:"updated_at,omitempty"`
