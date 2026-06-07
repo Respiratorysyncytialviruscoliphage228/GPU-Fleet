@@ -189,6 +189,63 @@ func TestGitFailureMessageKeepsDiagnosticDetail(t *testing.T) {
 	}
 }
 
+func TestAutoUpdateConfigDefaultsOnAndCanBeDisabled(t *testing.T) {
+	if !(ServiceConfig{}).AutoUpdateOn() {
+		t.Fatal("missing auto update config should default to enabled")
+	}
+	disabled := false
+	if (ServiceConfig{AutoUpdateEnabled: &disabled}).AutoUpdateOn() {
+		t.Fatal("explicit false auto update config should disable checks")
+	}
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var response struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]bool{"auto_update_enabled": false}, cookie, http.StatusOK, &response)
+	if response.Service.AutoUpdateEnabled {
+		t.Fatalf("expected auto update to be disabled, got %+v", response.Service)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]bool{"auto_update_enabled": true}, cookie, http.StatusOK, &response)
+	if !response.Service.AutoUpdateEnabled {
+		t.Fatalf("expected auto update to be enabled, got %+v", response.Service)
+	}
+}
+
+func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
+	before := version.ChangelogFromMarkdown(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 已有变更。
+- en-US: Existing change.
+`)
+	after := version.ChangelogFromMarkdown(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 已有变更。
+- en-US: Existing change.
+- zh-CN: 新增自动更新通知。
+- en-US: Added automatic update notices.
+`)
+	zh := newChangelogItems(changelogEntryItems(after[0], false), changelogEntryItems(before[0], false))
+	en := newChangelogItems(changelogEntryItems(after[0], true), changelogEntryItems(before[0], true))
+	if len(zh) != 1 || zh[0] != "新增自动更新通知。" {
+		t.Fatalf("expected only the new Chinese line, got %+v", zh)
+	}
+	if len(en) != 1 || en[0] != "Added automatic update notices." {
+		t.Fatalf("expected only the new English line, got %+v", en)
+	}
+	zh, en = updateSummaryFallback(nil, nil)
+	if zh[0] != "无更新说明" || en[0] != "No update notes." {
+		t.Fatalf("expected no-notes fallback, got zh=%+v en=%+v", zh, en)
+	}
+}
+
 func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git executable is not available")

@@ -109,6 +109,7 @@ export type ServiceStatus = {
   language: AppLanguage;
   guest_enabled: boolean;
   update_proxy?: string;
+  auto_update_enabled: boolean;
   min_free_bytes: number;
   cert_not_after?: string;
   config_revision: number;
@@ -223,6 +224,22 @@ export type UpdateApplyResponse = {
   restart_required: boolean;
   restarting: boolean;
   restart_at?: string;
+};
+
+export type UpdateNotice = {
+  id: string;
+  kind?: 'auto_update' | 'update' | 'certificate' | 'restart';
+  product?: string;
+  previous_commit?: string;
+  target_commit?: string;
+  current_commit?: string;
+  previous_version?: string;
+  current_version?: string;
+  started_at: string;
+  completed_at: string;
+  updated_at?: string;
+  summary?: string[];
+  summary_en?: string[];
 };
 
 export type Overview = {
@@ -415,6 +432,10 @@ export function applyUpdate() {
   });
 }
 
+export function getUpdateNotice() {
+  return request<{ notice?: UpdateNotice }>('/api/v1/admin/update/notice');
+}
+
 export function getStats(hours = 24) {
   return request<StatsResponse>(`/api/v1/stats/gpu-utilization?hours=${hours}`);
 }
@@ -468,7 +489,7 @@ export function changePassword(currentPassword: string, nextPassword: string) {
   });
 }
 
-export function updateServerConfig(payload: { port?: number; min_free_mb?: number }) {
+export function updateServerConfig(payload: { port?: number; min_free_mb?: number; auto_update_enabled?: boolean }) {
   return request<ServiceMutationResponse>('/api/v1/admin/server-config', {
     method: 'POST',
     body: JSON.stringify(payload)

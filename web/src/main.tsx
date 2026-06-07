@@ -56,6 +56,7 @@ import {
   getOverview,
   getSetupStatus,
   getStats,
+  getUpdateNotice,
   getUpdateStatus,
   getVersion,
   GPUSeriesPoint,
@@ -75,6 +76,7 @@ import {
   StoredGPU,
   StoredProcess,
   UpdateStatus,
+  UpdateNotice,
   updateLanguage,
   updateGuest,
   updateProxy,
@@ -94,7 +96,7 @@ type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
 type PendingUpdateNotice = {
-  kind?: 'update' | 'certificate' | 'restart';
+  kind?: 'auto_update' | 'update' | 'certificate' | 'restart';
   previous_commit?: string;
   target_commit?: string;
   previous_version?: string;
@@ -105,6 +107,9 @@ type CompletedUpdateNotice = PendingUpdateNotice & {
   product?: string;
   current_commit?: string;
   current_version?: string;
+  updated_at?: string;
+  summary?: string[];
+  summary_en?: string[];
   completed_at: string;
 };
 
@@ -231,6 +236,24 @@ function takeCompletedUpdateNotice() {
   return notice;
 }
 
+function completedNoticeFromServer(notice?: UpdateNotice): CompletedUpdateNotice | undefined {
+  if (!notice) return undefined;
+  return {
+    kind: notice.kind,
+    product: notice.product,
+    previous_commit: notice.previous_commit,
+    target_commit: notice.target_commit,
+    current_commit: notice.current_commit,
+    previous_version: notice.previous_version,
+    current_version: notice.current_version,
+    started_at: notice.started_at,
+    completed_at: notice.completed_at || notice.updated_at || new Date().toISOString(),
+    updated_at: notice.updated_at,
+    summary: notice.summary,
+    summary_en: notice.summary_en
+  };
+}
+
 async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
   const deadline = Date.now() + 90_000;
   const minimumWaitUntil = Date.now() + 2_000;
@@ -327,6 +350,16 @@ function App() {
     setLanguageState(next);
   }
 
+  async function fetchServerUpdateNotice() {
+    try {
+      const result = await getUpdateNotice();
+      const notice = completedNoticeFromServer(result.notice);
+      if (notice) setUpdateNotice(notice);
+    } catch {
+      // Older servers do not expose the notice endpoint; the local restart notice still works.
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const pending = readJSON<PendingUpdateNotice>(updatePendingKey);
@@ -364,6 +397,7 @@ function App() {
             if (!cancelled) {
               setLanguage(overview.service.language || status.service.language || initialLanguage());
               setAuthState('authenticated');
+              void fetchServerUpdateNotice();
             }
           })
           .catch(() => {
@@ -393,7 +427,10 @@ function App() {
           }}
         />
       )}
-      {authState === 'anonymous' && <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
+      {authState === 'anonymous' && <Login onSuccess={() => {
+        setAuthState('authenticated');
+        void fetchServerUpdateNotice();
+      }} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
       {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
       {authState === 'guest' && <GuestDashboard theme={theme} onToggleTheme={toggleTheme} />}
       <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
@@ -1715,16 +1752,19 @@ function DeviceActionConfirm({
 }
 
 function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotice; onClose: () => void }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
 
   if (!notice) return null;
   const isCertificate = notice.kind === 'certificate';
   const isRestart = notice.kind === 'restart';
+  const isAutomatic = notice.kind === 'auto_update';
   const from = shortHash(notice.previous_commit);
   const to = shortHash(notice.current_commit || notice.target_commit);
   const versionText = notice.current_version ? `v${notice.current_version}` : '-';
-  const title = isCertificate ? t('HTTPS 证书已启用') : isRestart ? t('服务已重启') : t('版本已更新');
-  const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : isRestart ? t('服务端已重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
+  const title = isCertificate ? t('HTTPS 证书已启用') : isRestart ? t('服务已重启') : isAutomatic ? t('自动更新已完成') : t('版本已更新');
+  const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : isRestart ? t('服务端已重启并刷新页面。') : isAutomatic ? t('服务端已自动完成更新并重启。') : t('服务端已自动重启并刷新页面。');
+  const summary = (language === 'en-US' && notice.summary_en?.length ? notice.summary_en : notice.summary)?.filter(Boolean) ?? [];
+  const updateTime = notice.completed_at || notice.updated_at;
 
   return createPortal(
     <div className="modal-backdrop" role="presentation">
@@ -1744,7 +1784,19 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
             <span>{t('提交')}</span>
             <strong title={notice.current_commit || notice.target_commit}>{from !== '-' && to !== '-' ? `${from} -> ${to}` : to}</strong>
           </div>
+          <div>
+            <span>{t('更新时间')}</span>
+            <strong>{fmtDateTime(updateTime)}</strong>
+          </div>
         </div>}
+        {isAutomatic && (
+          <div className="confirm-target update-summary">
+            <span>{t('更新内容')}</span>
+            <ul>
+              {(summary.length ? summary : [t('无更新说明')]).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          </div>
+        )}
         <div className="confirm-actions">
           <button className="primary compact" type="button" onClick={onClose}>
             <CheckCircle2 size={16} />
@@ -2072,6 +2124,8 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const [proxyURL, setProxyURL] = useState(service?.update_proxy || '');
   const [proxyMessage, setProxyMessage] = useState('');
   const [savingProxy, setSavingProxy] = useState(false);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(service?.auto_update_enabled ?? true);
+  const [savingAutoUpdate, setSavingAutoUpdate] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [updateDetail, setUpdateDetail] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
@@ -2108,6 +2162,10 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     setProxyURL(service?.update_proxy || '');
   }, [service?.update_proxy]);
 
+  useEffect(() => {
+    setAutoUpdateEnabled(service?.auto_update_enabled ?? true);
+  }, [service?.auto_update_enabled]);
+
   async function check() {
     setMessage('');
     setUpdateDetail('');
@@ -2134,6 +2192,22 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       setProxyMessage(message.toLowerCase().includes('not found') ? '当前服务端未包含更新代理接口，请先完成服务端更新并重启' : message);
     } finally {
       setSavingProxy(false);
+    }
+  }
+
+  async function toggleAutoUpdate(enabled: boolean) {
+    setAutoUpdateEnabled(enabled);
+    setProxyMessage('');
+    setSavingAutoUpdate(true);
+    try {
+      await updateServerConfig({ auto_update_enabled: enabled });
+      setProxyMessage(enabled ? '自动更新已开启' : '自动更新已关闭');
+      await onDone();
+    } catch (err) {
+      setAutoUpdateEnabled(!enabled);
+      setProxyMessage(err instanceof Error ? err.message : 'auto update config failed');
+    } finally {
+      setSavingAutoUpdate(false);
     }
   }
 
@@ -2238,6 +2312,17 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           <strong>{fmtDateTime(status?.checked_at)}</strong>
         </div>
       </div>
+
+      <label className="switch-row update-auto-row">
+        <input
+          type="checkbox"
+          checked={autoUpdateEnabled}
+          disabled={savingAutoUpdate || busy}
+          onChange={(event) => void toggleAutoUpdate(event.target.checked)}
+        />
+        <span>{autoUpdateEnabled ? '自动更新已开启' : '自动更新已关闭'}</span>
+        <small>每 30 分钟检查一次，有更新时自动拉取、构建并重启</small>
+      </label>
 
       <form className="settings-form inline update-proxy-form" onSubmit={saveProxy}>
         <label>

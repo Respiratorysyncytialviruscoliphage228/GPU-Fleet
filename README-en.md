@@ -38,7 +38,7 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 | Security | Implemented | HMAC signatures, nonce replay protection, login rate limit, progressive lockout, 30-day sessions |
 | Guest access | Implemented | Login-page guest entry, sanitized overview, guest-only series API, visit records with browser fingerprint summaries |
 | Release info | Implemented | `-version`, `/api/v1/version`, current release summary, full changelog dialog, `CHANGELOG.md` |
-| Online update | Implemented | Git upstream check, 1-hour status cache, proxy setting, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic server restart |
+| Online update | Implemented | Default-on 30-minute automatic checks, manual checks, 1-hour status cache, proxy setting, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic restart, and completion notices |
 
 ## First Startup
 
@@ -53,7 +53,7 @@ Language changes apply immediately. Port and HTTPS certificate changes require r
 
 ## Dashboard
 
-The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, disk reserve, online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
+The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, disk reserve, automatic/manual online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
 
 The guest dashboard at `/guest` is intentionally smaller: it shows a sanitized overview and GPU chart cards only. It hides GPU processes, 24-hour statistics, management controls, real device identifiers, host metadata, and internal GPU identifiers.
 
@@ -85,7 +85,9 @@ Create devices from the dashboard Devices page, copy each one-time secret, then 
 
 ## Server Operations
 
-Online update operates only on the server Git checkout configured by `-repo-dir` or `GPUFLEET_REPO_DIR`. It checks upstream state, builds the remote commit in a temporary worktree, fast-forwards only after a successful build, replaces the running server binary, and restarts the server. The update panel caches status for one hour, supports an update proxy URL, and still allows a manual recheck.
+Online update operates only on the server Git checkout configured by `-repo-dir` or `GPUFLEET_REPO_DIR`. Automatic checks are enabled by default and run every 30 minutes; when a fast-forwardable update exists, the server builds the remote commit in a temporary worktree, fast-forwards only after a successful build, replaces the running server binary, and restarts. The update panel caches status for one hour, supports an update proxy URL, and still allows manual checks and manual apply.
+
+After an automatic update completes, the next admin visit shows a completion dialog with update time and notes. If the version did not change, the dialog shows only new or changed `CHANGELOG.md` lines since the previous checkout; if the changelog is identical, it shows “No update notes.”
 
 Settings also provides a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
 

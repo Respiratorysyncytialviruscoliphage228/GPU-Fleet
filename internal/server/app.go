@@ -124,7 +124,7 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		}
 	}
 
-	return &App{
+	app := &App{
 		config:                config,
 		meta:                  meta,
 		metrics:               metrics,
@@ -139,7 +139,9 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		updateExit:            func() { os.Exit(0) },
 		logger:                logger,
 		scheme:                scheme,
-	}, generatedPassword, nil
+	}
+	app.startAutoUpdateLoop()
+	return app, generatedPassword, nil
 }
 
 func (a *App) Handler() http.Handler {
@@ -167,6 +169,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/guest/visits", a.requireSession(a.handleAdminGuestVisits))
 	mux.HandleFunc("/api/v1/admin/update/proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/update-proxy", a.requireSession(a.handleAdminUpdateProxy))
+	mux.HandleFunc("/api/v1/admin/update/notice", a.requireSession(a.handleUpdateNotice))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/restart", a.requireSession(a.handleAdminRestart))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
@@ -461,8 +464,9 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Port      int `json:"port"`
-		MinFreeMB int `json:"min_free_mb"`
+		Port              int   `json:"port"`
+		MinFreeMB         int   `json:"min_free_mb"`
+		AutoUpdateEnabled *bool `json:"auto_update_enabled"`
 	}
 	if err := decodeJSON(r, &body, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -490,6 +494,13 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		a.config.MinFreeBytes = minFreeBytes
 		a.metrics.SetMinFreeBytes(minFreeBytes)
+	}
+	if body.AutoUpdateEnabled != nil {
+		config, err = a.meta.UpdateAutoUpdateEnabled(*body.AutoUpdateEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
@@ -1462,6 +1473,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		Language:          config.Language,
 		GuestEnabled:      config.GuestEnabled,
 		UpdateProxy:       config.UpdateProxy,
+		AutoUpdateEnabled: config.AutoUpdateOn(),
 		MinFreeBytes:      config.MinFreeBytes,
 		CertNotAfter:      config.CertNotAfter,
 		ConfigRevision:    config.ConfigRevision,
@@ -1528,6 +1540,7 @@ type serviceStatus struct {
 	Language          string    `json:"language"`
 	GuestEnabled      bool      `json:"guest_enabled"`
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
+	AutoUpdateEnabled bool      `json:"auto_update_enabled"`
 	MinFreeBytes      uint64    `json:"min_free_bytes"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
 	ConfigRevision    int       `json:"config_revision"`

@@ -194,6 +194,7 @@ GET  /api/v1/admin/guest/visits
 POST /api/v1/admin/restart
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
+GET  /api/v1/admin/update/notice
 POST /api/v1/admin/devices
 PATCH /api/v1/admin/devices/{device_id}
 DELETE /api/v1/admin/devices/{device_id}
@@ -278,6 +279,7 @@ POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
+GET  /api/v1/admin/update/notice
 POST /api/v1/admin/guest
 GET  /api/v1/admin/guest/visits
 POST /api/v1/admin/restart
@@ -287,17 +289,18 @@ POST /api/v1/admin/restart
 - `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口、界面语言和可选证书。
 - `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导，可集中调整密码、端口、界面语言和证书。
 - `POST /admin/password`：修改 Web 访问密码。
-- `POST /admin/server-config`：保存访问端口和磁盘预留空间。端口不会热切换，响应会标记是否需要重启；磁盘预留空间立即生效。
+- `POST /admin/server-config`：保存访问端口、磁盘预留空间和自动更新开关。端口不会热切换，响应会标记是否需要重启；磁盘预留空间和自动更新开关立即生效。
 - `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，证书保存后服务端会调度自动重启，恢复后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
 - `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。
+- `GET /admin/update/notice`：返回并清除一条自动更新完成通知。通知包含更新时间、提交、版本和中英文更新内容；同版本更新只返回新旧 changelog 顶部同版本条目中新增或变化的行。
 - `POST /admin/guest`：开启或关闭访客入口和访客总览。
 - `GET /admin/guest/visits`：返回最近 100 次访客总览访问记录，包含远端地址、User-Agent、语言、平台、屏幕、时区和浏览器指纹摘要。
 - `POST /admin/restart`：手动调度服务端重启。页面会全屏等待服务恢复，恢复后刷新并显示完成提示。
 
-在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。
+在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。自动更新默认开启，每 30 分钟执行同一套服务端检查和应用逻辑；旧 metadata 没有 `auto_update_enabled` 字段时按开启处理。
 
 更新状态响应示例：
 

@@ -76,7 +76,7 @@ func ChangelogFromFile(path string) ([]ChangelogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries := parseChangelogMarkdown(string(raw))
+	entries := ChangelogFromMarkdown(string(raw))
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("no changelog entries found in %s", path)
 	}
@@ -85,7 +85,7 @@ func ChangelogFromFile(path string) ([]ChangelogEntry, error) {
 
 var changelogVersionHeading = regexp.MustCompile(`^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
 
-func parseChangelogMarkdown(raw string) []ChangelogEntry {
+func ChangelogFromMarkdown(raw string) []ChangelogEntry {
 	var entries []ChangelogEntry
 	var current *ChangelogEntry
 	section := ""
@@ -210,9 +210,18 @@ func Changelog() []ChangelogEntry {
 		{
 			Version: "0.1.7",
 			Date:    "2026-06-08",
-			Title:   "安装更新、GPU 监控、设置与存储优化",
-			TitleEN: "Installation, update, GPU monitoring, settings, and storage improvements",
+			Title:   "安装、自动更新、GPU 监控、设置与存储优化",
+			TitleEN: "Installation, automatic updates, GPU monitoring, settings, and storage improvements",
+			Added: []string{
+				"新增默认开启的服务端自动更新检查，每 30 分钟检测 Git 上游，有可 fast-forward 更新时自动拉取、构建并调度重启。",
+				"自动更新完成后，下一次管理员访问会弹出更新提示，展示更新时间和更新内容；同版本更新会只显示新增或变化的 CHANGELOG 行，完全一致时显示“无更新说明”。",
+			},
+			AddedEN: []string{
+				"Added default-on server-side automatic update checks every 30 minutes; fast-forwardable upstream updates are pulled, built, and scheduled for restart automatically.",
+				"After an automatic update completes, the next admin visit shows an update notice with the update time and notes; same-version updates show only new or changed CHANGELOG lines, or \"No update notes\" when unchanged.",
+			},
 			Changed: []string{
+				"移动端配置引导改为更紧凑的首屏摘要和表单布局，窄屏下减少英雄区占用并保持保存操作易触达。",
 				"Linux 自动更新重启脚本改为先将新二进制原子替换到当前路径，再等待旧进程退出，避免 systemd 在替换前抢先拉起旧二进制。",
 				"重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。",
 				"GPU 详情和总览卡片布局进一步压缩，长型号、趋势标题、功耗/显存说明和 Compute 信息不再挤压卡片内容。",
@@ -231,6 +240,7 @@ func Changelog() []ChangelogEntry {
 				"在线更新检查失败时会按 GitHub TLS、DNS、连接超时和认证等常见原因显示可操作提示，并保留 Git 原始错误供详情弹窗诊断。",
 			},
 			ChangedEN: []string{
+				"Mobile setup now uses a more compact first-screen summary and form layout, reducing hero height on narrow screens while keeping save actions easy to reach.",
 				"Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.",
 				"The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.",
 				"GPU detail and overview card layouts are more compact so long model names, trend labels, power/memory captions, and Compute metadata no longer crowd the card contents.",

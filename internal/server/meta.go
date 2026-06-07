@@ -29,15 +29,16 @@ type MetadataStore struct {
 }
 
 type metadataFile struct {
-	CreatedAt      time.Time             `json:"created_at"`
-	SetupComplete  *bool                 `json:"setup_complete,omitempty"`
-	Admin          AdminAccount          `json:"admin"`
-	Service        ServiceConfig         `json:"service"`
-	Devices        map[string]*Device    `json:"devices"`
-	WebSessions    map[string]WebSession `json:"web_sessions,omitempty"`
-	GuestVisits    []GuestVisit          `json:"guest_visits,omitempty"`
-	AuditEvents    []AuditEvent          `json:"audit_events"`
-	LastProcessSet map[string]time.Time  `json:"last_process_set,omitempty"`
+	CreatedAt           time.Time             `json:"created_at"`
+	SetupComplete       *bool                 `json:"setup_complete,omitempty"`
+	Admin               AdminAccount          `json:"admin"`
+	Service             ServiceConfig         `json:"service"`
+	Devices             map[string]*Device    `json:"devices"`
+	WebSessions         map[string]WebSession `json:"web_sessions,omitempty"`
+	GuestVisits         []GuestVisit          `json:"guest_visits,omitempty"`
+	AuditEvents         []AuditEvent          `json:"audit_events"`
+	LastProcessSet      map[string]time.Time  `json:"last_process_set,omitempty"`
+	PendingUpdateNotice *UpdateNotice         `json:"pending_update_notice,omitempty"`
 }
 
 type AdminAccount struct {
@@ -48,18 +49,39 @@ type AdminAccount struct {
 }
 
 type ServiceConfig struct {
-	Addr           string    `json:"addr"`
-	Port           int       `json:"port"`
-	HTTPS          bool      `json:"https"`
-	Language       string    `json:"language,omitempty"`
-	GuestEnabled   bool      `json:"guest_enabled,omitempty"`
-	UpdateProxy    string    `json:"update_proxy,omitempty"`
-	MinFreeBytes   uint64    `json:"min_free_bytes,omitempty"`
-	CertPath       string    `json:"cert_path,omitempty"`
-	KeyPath        string    `json:"key_path,omitempty"`
-	CertNotAfter   time.Time `json:"cert_not_after,omitempty"`
-	ConfigRevision int       `json:"config_revision"`
-	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	Addr              string    `json:"addr"`
+	Port              int       `json:"port"`
+	HTTPS             bool      `json:"https"`
+	Language          string    `json:"language,omitempty"`
+	GuestEnabled      bool      `json:"guest_enabled,omitempty"`
+	UpdateProxy       string    `json:"update_proxy,omitempty"`
+	AutoUpdateEnabled *bool     `json:"auto_update_enabled,omitempty"`
+	MinFreeBytes      uint64    `json:"min_free_bytes,omitempty"`
+	CertPath          string    `json:"cert_path,omitempty"`
+	KeyPath           string    `json:"key_path,omitempty"`
+	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
+	ConfigRevision    int       `json:"config_revision"`
+	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+}
+
+func (c ServiceConfig) AutoUpdateOn() bool {
+	return c.AutoUpdateEnabled == nil || *c.AutoUpdateEnabled
+}
+
+type UpdateNotice struct {
+	ID              string    `json:"id"`
+	Kind            string    `json:"kind"`
+	Product         string    `json:"product,omitempty"`
+	PreviousCommit  string    `json:"previous_commit,omitempty"`
+	TargetCommit    string    `json:"target_commit,omitempty"`
+	CurrentCommit   string    `json:"current_commit,omitempty"`
+	PreviousVersion string    `json:"previous_version,omitempty"`
+	CurrentVersion  string    `json:"current_version,omitempty"`
+	StartedAt       time.Time `json:"started_at"`
+	CompletedAt     time.Time `json:"completed_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Summary         []string  `json:"summary,omitempty"`
+	SummaryEN       []string  `json:"summary_en,omitempty"`
 }
 
 type Device struct {
@@ -409,6 +431,47 @@ func (s *MetadataStore) UpdateProxy(proxyURL string) (ServiceConfig, error) {
 		s.addAuditLocked("update_proxy_changed", "changed update proxy")
 	}
 	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateAutoUpdateEnabled(enabled bool) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Service.AutoUpdateEnabled = &enabled
+	s.bumpServiceConfigLocked()
+	if enabled {
+		s.addAuditLocked("auto_update_enabled", "enabled automatic update checks")
+	} else {
+		s.addAuditLocked("auto_update_disabled", "disabled automatic update checks")
+	}
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) SaveUpdateNotice(notice UpdateNotice) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if notice.ID == "" {
+		notice.ID = strconv.FormatInt(time.Now().UTC().UnixNano(), 36)
+	}
+	if notice.Kind == "" {
+		notice.Kind = "auto_update"
+	}
+	if notice.UpdatedAt.IsZero() {
+		notice.UpdatedAt = time.Now().UTC()
+	}
+	s.data.PendingUpdateNotice = &notice
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) TakeUpdateNotice() *UpdateNotice {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.PendingUpdateNotice == nil {
+		return nil
+	}
+	notice := *s.data.PendingUpdateNotice
+	s.data.PendingUpdateNotice = nil
+	_ = s.saveLocked()
+	return &notice
 }
 
 func (s *MetadataStore) RecordGuestVisit(visit GuestVisit) error {

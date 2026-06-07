@@ -23,6 +23,7 @@ const (
 	updatePullTimeout    = 60 * time.Second
 	updateBuildTimeout   = 3 * time.Minute
 	updateRestartDelay   = 1200 * time.Millisecond
+	autoUpdateInterval   = 30 * time.Minute
 	updateOutputLimit    = 6000
 	updateSourceEntry    = "./cmd/gpufleet-server"
 	updateRestartLogName = "gpufleet-update-restart.log"
@@ -114,47 +115,85 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	a.updateMu.Lock()
 	defer a.updateMu.Unlock()
 
-	checkCtx, checkCancel := context.WithTimeout(r.Context(), updateCheckTimeout)
+	response, statusCode, message := a.applyUpdateLocked(r.Context(), false)
+	if statusCode >= http.StatusBadRequest {
+		writeError(w, statusCode, message)
+		return
+	}
+	writeJSON(w, statusCode, response)
+}
+
+func (a *App) handleUpdateNotice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"notice": a.meta.TakeUpdateNotice()})
+}
+
+func (a *App) startAutoUpdateLoop() {
+	go func() {
+		ticker := time.NewTicker(autoUpdateInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			if !a.meta.SetupComplete() || !a.meta.ServiceConfig().AutoUpdateOn() {
+				continue
+			}
+			a.updateMu.Lock()
+			response, statusCode, message := a.applyUpdateLocked(context.Background(), true)
+			a.updateMu.Unlock()
+			if statusCode >= http.StatusBadRequest {
+				if a.logger != nil {
+					a.logger.Printf("auto update skipped: %s", message)
+				}
+				continue
+			}
+			if response.Restarting {
+				return
+			}
+		}
+	}()
+}
+
+func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateApplyResponse, int, string) {
+	startedAt := time.Now().UTC()
+	checkCtx, checkCancel := context.WithTimeout(ctx, updateCheckTimeout)
 	status := a.gitUpdateStatus(checkCtx)
 	checkCancel()
 	if !status.Supported {
-		writeError(w, http.StatusBadRequest, status.Message)
-		return
+		return updateApplyResponse{}, http.StatusBadRequest, status.Message
 	}
 	if status.Upstream == "" {
-		writeError(w, http.StatusBadRequest, "current branch has no upstream")
-		return
+		return updateApplyResponse{}, http.StatusBadRequest, "current branch has no upstream"
 	}
 	if status.Dirty {
-		writeError(w, http.StatusConflict, "server working tree has uncommitted changes")
-		return
+		return updateApplyResponse{}, http.StatusConflict, "server working tree has uncommitted changes"
 	}
 	if status.Ahead > 0 {
-		writeError(w, http.StatusConflict, "local branch is ahead of upstream; fast-forward update is not available")
-		return
+		return updateApplyResponse{}, http.StatusConflict, "local branch is ahead of upstream; fast-forward update is not available"
+	}
+	if status.Failed {
+		return updateApplyResponse{}, http.StatusBadGateway, status.Message
 	}
 	if !status.Available && !status.BinaryOutdated {
-		writeJSON(w, http.StatusOK, updateApplyResponse{OK: true, Status: status, RestartRequired: false})
-		return
+		return updateApplyResponse{OK: true, Status: status, RestartRequired: false}, http.StatusOK, ""
 	}
 
 	deps := a.checkUpdateDependencies()
 	if !deps.OK {
 		_ = a.meta.AddAudit("server_update_failed", "missing update dependencies: "+strings.Join(deps.Missing, ", "))
-		writeError(w, http.StatusPreconditionFailed, "missing update dependencies: "+strings.Join(deps.Missing, ", "))
-		return
+		return updateApplyResponse{}, http.StatusPreconditionFailed, "missing update dependencies: " + strings.Join(deps.Missing, ", ")
 	}
 
 	exePath, err := currentExecutablePath()
 	if err != nil {
 		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
-		writeError(w, http.StatusPreconditionFailed, err.Error())
-		return
+		return updateApplyResponse{}, http.StatusPreconditionFailed, err.Error()
 	}
 	nextPath := exePath + ".next"
 	_ = os.Remove(nextPath)
 
-	buildCtx, buildCancel := context.WithTimeout(r.Context(), updateBuildTimeout)
+	buildCtx, buildCancel := context.WithTimeout(ctx, updateBuildTimeout)
 	targetCommit := status.RemoteCommit
 	if !status.Available && status.BinaryOutdated {
 		targetCommit = status.LocalCommit
@@ -169,25 +208,23 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		_ = os.Remove(nextPath)
 		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("build update failed: %s", limitText(err.Error(), 500)))
-		return
+		return updateApplyResponse{}, http.StatusInternalServerError, fmt.Sprintf("build update failed: %s", limitText(err.Error(), 500))
 	}
 
 	before := status.LocalCommit
 	output := ""
 	if status.Available {
-		pullCtx, pullCancel := context.WithTimeout(r.Context(), updatePullTimeout)
+		pullCtx, pullCancel := context.WithTimeout(ctx, updatePullTimeout)
 		output, err = a.runGit(pullCtx, "pull", "--ff-only")
 		pullCancel()
 		if err != nil {
 			_ = os.Remove(buildResult.OutputPath)
 			_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("git pull failed: %s", limitText(err.Error(), 500)))
-			return
+			return updateApplyResponse{}, http.StatusInternalServerError, fmt.Sprintf("git pull failed: %s", limitText(err.Error(), 500))
 		}
 	}
 
-	finalCtx, finalCancel := context.WithTimeout(r.Context(), updateCheckTimeout)
+	finalCtx, finalCancel := context.WithTimeout(ctx, updateCheckTimeout)
 	finalStatus := a.gitUpdateStatus(finalCtx)
 	finalCancel()
 	restartRequired := status.BinaryOutdated || (before != "" && finalStatus.LocalCommit != "" && before != finalStatus.LocalCommit)
@@ -205,8 +242,10 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		if err := a.updateScheduleRestart(restartReq); err != nil {
 			_ = os.Remove(buildResult.OutputPath)
 			_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
-			return
+			return updateApplyResponse{}, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500))
+		}
+		if automatic {
+			_ = a.saveAutomaticUpdateNotice(ctx, status, finalStatus, targetCommit, startedAt, restartAt)
 		}
 		if status.BinaryOutdated && !status.Available {
 			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("rebuilt %s from repository commit %s and scheduled automatic restart", version.String(), shortCommit(targetCommit)))
@@ -221,7 +260,7 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 			}
 			os.Exit(0)
 		}()
-		writeJSON(w, http.StatusOK, updateApplyResponse{
+		return updateApplyResponse{
 			OK:               true,
 			Status:           finalStatus,
 			Output:           limitText(output, updateOutputLimit),
@@ -230,12 +269,11 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 			RestartRequired:  true,
 			Restarting:       true,
 			RestartAt:        restartAt,
-		})
-		return
+		}, http.StatusOK, ""
 	}
 
 	_ = os.Remove(buildResult.OutputPath)
-	writeJSON(w, http.StatusOK, updateApplyResponse{
+	return updateApplyResponse{
 		OK:               true,
 		Status:           finalStatus,
 		Output:           limitText(output, updateOutputLimit),
@@ -243,7 +281,130 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		DependencyStatus: deps,
 		RestartRequired:  false,
 		Restarting:       false,
-	})
+	}, http.StatusOK, ""
+}
+
+func (a *App) saveAutomaticUpdateNotice(ctx context.Context, beforeStatus, finalStatus updateStatus, targetCommit string, startedAt, restartAt time.Time) error {
+	summary, summaryEN := a.updateSummary(ctx, beforeStatus.LocalCommit, targetCommit)
+	if len(summary) == 0 && len(summaryEN) == 0 {
+		summary = []string{"无更新说明"}
+		summaryEN = []string{"No update notes."}
+	}
+	currentVersion := finalStatus.RepoVersion
+	if currentVersion == "" {
+		currentVersion = beforeStatus.RepoVersion
+	}
+	notice := UpdateNotice{
+		ID:              strings.TrimSpace(targetCommit) + "-" + strconv.FormatInt(time.Now().UTC().Unix(), 10),
+		Kind:            "auto_update",
+		Product:         version.Product,
+		PreviousCommit:  beforeStatus.LocalCommit,
+		TargetCommit:    targetCommit,
+		CurrentCommit:   finalStatus.LocalCommit,
+		PreviousVersion: beforeStatus.RepoVersion,
+		CurrentVersion:  currentVersion,
+		StartedAt:       startedAt,
+		CompletedAt:     restartAt,
+		UpdatedAt:       time.Now().UTC(),
+		Summary:         summary,
+		SummaryEN:       summaryEN,
+	}
+	return a.meta.SaveUpdateNotice(notice)
+}
+
+func (a *App) updateSummary(ctx context.Context, beforeCommit, targetCommit string) ([]string, []string) {
+	if strings.TrimSpace(targetCommit) == "" {
+		targetCommit = "HEAD"
+	}
+	afterRaw, err := a.changelogAt(ctx, targetCommit)
+	if err != nil || strings.TrimSpace(afterRaw) == "" {
+		return []string{"无更新说明"}, []string{"No update notes."}
+	}
+	beforeRaw := ""
+	if strings.TrimSpace(beforeCommit) != "" {
+		beforeRaw, _ = a.changelogAt(ctx, beforeCommit)
+	}
+	if strings.TrimSpace(beforeRaw) == strings.TrimSpace(afterRaw) {
+		return []string{"无更新说明"}, []string{"No update notes."}
+	}
+	afterEntries := version.ChangelogFromMarkdown(afterRaw)
+	if len(afterEntries) == 0 {
+		return []string{"无更新说明"}, []string{"No update notes."}
+	}
+	beforeEntries := version.ChangelogFromMarkdown(beforeRaw)
+	afterTop := afterEntries[0]
+	if len(beforeEntries) == 0 || beforeEntries[0].Version != afterTop.Version {
+		zh := changelogEntryItems(afterTop, false)
+		en := changelogEntryItems(afterTop, true)
+		if len(zh) == 0 && afterTop.Title != "" {
+			zh = append(zh, afterTop.Title)
+		}
+		if len(en) == 0 && afterTop.TitleEN != "" {
+			en = append(en, afterTop.TitleEN)
+		}
+		return updateSummaryFallback(zh, en)
+	}
+	zh := newChangelogItems(changelogEntryItems(afterTop, false), changelogEntryItems(beforeEntries[0], false))
+	en := newChangelogItems(changelogEntryItems(afterTop, true), changelogEntryItems(beforeEntries[0], true))
+	return updateSummaryFallback(zh, en)
+}
+
+func (a *App) changelogAt(ctx context.Context, rev string) (string, error) {
+	showCtx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
+	defer cancel()
+	return a.runGit(showCtx, "show", rev+":CHANGELOG.md")
+}
+
+func changelogEntryItems(entry version.ChangelogEntry, english bool) []string {
+	var items []string
+	add := func(values []string) {
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				items = append(items, value)
+			}
+		}
+	}
+	if english {
+		add(entry.AddedEN)
+		add(entry.ChangedEN)
+		add(entry.SecurityEN)
+		add(entry.FixedEN)
+		return items
+	}
+	add(entry.Added)
+	add(entry.Changed)
+	add(entry.Security)
+	add(entry.Fixed)
+	return items
+}
+
+func newChangelogItems(after, before []string) []string {
+	seen := map[string]bool{}
+	for _, item := range before {
+		seen[normalizeChangelogItem(item)] = true
+	}
+	var out []string
+	for _, item := range after {
+		if !seen[normalizeChangelogItem(item)] {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func normalizeChangelogItem(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func updateSummaryFallback(zh, en []string) ([]string, []string) {
+	if len(zh) == 0 {
+		zh = []string{"无更新说明"}
+	}
+	if len(en) == 0 {
+		en = []string{"No update notes."}
+	}
+	return zh, en
 }
 
 func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {

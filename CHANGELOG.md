@@ -8,11 +8,20 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 ### Title / 标题
 
-- zh-CN: 安装更新、GPU 监控、设置与存储优化
-- en-US: Installation, update, GPU monitoring, settings, and storage improvements
+- zh-CN: 安装、自动更新、GPU 监控、设置与存储优化
+- en-US: Installation, automatic updates, GPU monitoring, settings, and storage improvements
+
+### Added / 新增
+
+- zh-CN: 新增默认开启的服务端自动更新检查，每 30 分钟检测 Git 上游，有可 fast-forward 更新时自动拉取、构建并调度重启。
+- en-US: Added default-on server-side automatic update checks every 30 minutes; fast-forwardable upstream updates are pulled, built, and scheduled for restart automatically.
+- zh-CN: 自动更新完成后，下一次管理员访问会弹出更新提示，展示更新时间和更新内容；同版本更新会只显示新增或变化的 CHANGELOG 行，完全一致时显示“无更新说明”。
+- en-US: After an automatic update completes, the next admin visit shows an update notice with the update time and notes; same-version updates show only new or changed CHANGELOG lines, or "No update notes" when unchanged.
 
 ### Changed / 变更
 
+- zh-CN: 移动端配置引导改为更紧凑的首屏摘要和表单布局，窄屏下减少英雄区占用并保持保存操作易触达。
+- en-US: Mobile setup now uses a more compact first-screen summary and form layout, reducing hero height on narrow screens while keeping save actions easy to reach.
 - zh-CN: Linux 自动更新重启脚本改为先将新二进制原子替换到当前路径，再等待旧进程退出，避免 systemd 在替换前抢先拉起旧二进制。
 - en-US: Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.
 - zh-CN: 重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。

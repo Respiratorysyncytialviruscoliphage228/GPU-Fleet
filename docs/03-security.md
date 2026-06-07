@@ -110,10 +110,11 @@ MVP 支持本地管理员账号：
 
 ## 服务端在线更新边界
 
-设置页提供服务端自身在线更新能力，但它不是客户端控制通道：
+设置页提供服务端自身在线更新能力，自动更新默认开启并每 30 分钟复用同一套服务端检查和应用逻辑，但它不是客户端控制通道：
 
 - 该能力只操作服务端运行目录对应的 Git 工作区，由 `-repo-dir` 或 `GPUFLEET_REPO_DIR` 指定。
 - 接口需要已登录的 Web Cookie Session。
+- 自动更新不接受浏览器请求参数；管理员只可通过设置页开关启停该周期检查。
 - 请求体不接受命令、仓库路径、分支、远端或任意参数。
 - 后端只执行固定 Git 参数：状态检查、`fetch --quiet --prune`、`rev-parse`、`rev-list`、`status --porcelain`、`worktree add/remove` 和 `pull --ff-only`。
 - 后端只使用固定的 `go build ./cmd/gpufleet-server` 构建服务端，不接受前端传入构建命令。
