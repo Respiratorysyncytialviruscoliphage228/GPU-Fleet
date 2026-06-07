@@ -136,6 +136,10 @@ function initialTheme(): Theme {
 function initialLanguage(): AppLanguage {
   const stored = window.localStorage.getItem('gpufleet-language');
   if (stored === 'zh-CN' || stored === 'en-US') return stored;
+  return browserLanguage();
+}
+
+function browserLanguage(): AppLanguage {
   return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
 }
 
@@ -181,10 +185,10 @@ function temp(value?: number) {
   return `${Math.round(value)}°C`;
 }
 
-function fmtStoredDays(days?: number, fallbackHours?: number) {
+function storedDaysValue(days?: number, fallbackHours?: number) {
   const fallbackDays = typeof fallbackHours === 'number' && Number.isFinite(fallbackHours) && fallbackHours > 0 ? Math.ceil(fallbackHours / 24) : 0;
   const value = typeof days === 'number' && Number.isFinite(days) ? days : fallbackDays;
-  return `已存储 ${Math.max(0, value)} 天`;
+  return Math.max(0, value);
 }
 
 function fmtDateTime(value?: string) {
@@ -372,7 +376,7 @@ function App() {
         .then((status) => {
           if (cancelled) return;
           setGuestEnabled(status.guest_enabled);
-          setLanguage(status.service.language || initialLanguage());
+          setLanguage(browserLanguage());
           setAuthState(status.guest_enabled ? 'guest' : 'anonymous');
         })
         .catch(() => {
@@ -2047,7 +2051,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <SettingStat label="当前协议" value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? '证书已配置' : '未启用证书'} />
           <SettingStat label="访问端口" value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
           <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={certCaption} />
-          <SettingStat label="磁盘预留" value={fmtBytes(service?.min_free_bytes ?? min)} caption={`空闲 ${fmtBytes(data?.disk.free_bytes)}`} />
+          <SettingStat label="磁盘预留" value={fmtBytes(service?.min_free_bytes ?? min)} caption={t('空闲 {value}', { value: fmtBytes(data?.disk.free_bytes) })} />
         </div>
       </section>
 
@@ -3122,24 +3126,29 @@ function FilePicker({ label, accept, fileName, onChange }: { label: string; acce
 }
 
 function DatabaseSettings({ data }: { data?: Overview }) {
+  const { t } = useI18n();
+  const size = fmtBytes(data?.database_size_bytes ?? 0);
+  const days = storedDaysValue(data?.metric_stored_days, data?.retention_hours);
+  const free = fmtBytes(data?.disk.free_bytes);
   return (
     <article className="panel setting-operation" data-testid="settings-database">
       <div className="operation-head">
         <div className="operation-icon"><Database size={18} /></div>
         <div>
-          <h2>数据库下载</h2>
-          <p>数据库大小 {fmtBytes(data?.database_size_bytes ?? 0)} · {fmtStoredDays(data?.metric_stored_days, data?.retention_hours)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
+          <h2>{t('数据库下载')}</h2>
+          <p>{t('数据库大小 {size} · 已存储 {days} 天 · {free} 空闲', { size, days, free })}</p>
         </div>
       </div>
       <a className="secondary action-button" href={databaseDownloadURL()} download>
         <Download size={16} />
-        下载数据库
+        {t('下载数据库')}
       </a>
     </article>
   );
 }
 
 function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
   const currentBytes = data?.service.min_free_bytes ?? data?.min_free_space_bytes ?? data?.disk.min_free_bytes ?? 800 * 1024 * 1024;
   const [minFreeMB, setMinFreeMB] = useState(String(Math.round(currentBytes / 1024 / 1024)));
   const [message, setMessage] = useState('');
@@ -3154,13 +3163,13 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
     setMessage('');
     const parsed = Number(minFreeMB);
     if (!Number.isInteger(parsed) || parsed < 64) {
-      setMessage('磁盘预留至少 64 MiB');
+      setMessage(t('磁盘预留至少 64 MiB'));
       return;
     }
     setBusy(true);
     try {
       await updateServerConfig({ min_free_mb: parsed });
-      setMessage('磁盘预留已保存');
+      setMessage(t('磁盘预留已保存'));
       await onDone();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'disk reserve update failed');
@@ -3174,15 +3183,15 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
       <div className="operation-head">
         <div className="operation-icon"><Database size={18} /></div>
         <div>
-          <h2>磁盘预留</h2>
-          <p>{fmtBytes(currentBytes)} · 空闲 {fmtBytes(data?.disk.free_bytes)}</p>
+          <h2>{t('磁盘预留')}</h2>
+          <p>{fmtBytes(currentBytes)} · {t('空闲 {value}', { value: fmtBytes(data?.disk.free_bytes) })}</p>
         </div>
       </div>
       <form className="settings-form inline" onSubmit={submit}>
-        <label>预留空间 MiB<input value={minFreeMB} onChange={(event) => setMinFreeMB(event.target.value)} type="number" min={64} step={64} inputMode="numeric" /></label>
-        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存预留'}</button>
+        <label>{t('预留空间 MiB')}<input value={minFreeMB} onChange={(event) => setMinFreeMB(event.target.value)} type="number" min={64} step={64} inputMode="numeric" /></label>
+        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? t('保存中') : t('保存预留')}</button>
       </form>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
   );
 }

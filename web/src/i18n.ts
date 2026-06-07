@@ -310,6 +310,7 @@ const en: Record<string, string> = {
   '上传证书': 'Upload certificate',
   '数据库下载': 'Database Download',
   '数据库大小': 'Database size',
+  '数据库大小 {size} · 已存储 {days} 天 · {free} 空闲': 'Database size {size} · stored {days} days · {free} free',
   '下载数据库': 'Download database',
   '预留空间 MiB': 'Reserved space MiB',
   '保存预留': 'Save reserve',
@@ -321,8 +322,32 @@ const en: Record<string, string> = {
   '在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。': 'Online update failed. View details and check the server network, Git upstream, or update proxy settings.',
   '检查 Git 上游失败': 'Git upstream check failed',
   '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.',
+  '检查失败': 'Check failed',
+  '利用率': 'Utilization',
+  '平均': 'Average',
+  '峰值': 'Peak',
+  '正在拉取并重启': 'Pulling and restarting',
+  '请确认当前更新代理可由服务端访问。': 'Confirm the current update proxy is reachable from the server.',
+  '请在设置页配置服务端可访问的更新代理，或检查服务器直连 GitHub 的网络。': 'Configure an update proxy reachable from the server, or check direct server connectivity to GitHub.',
+  '当前服务端未包含更新代理接口，请先完成服务端更新并重启': 'The current server does not include the update proxy endpoint. Finish the server update and restart first.',
+  '在线更新失败：服务器无法解析 GitHub 域名。请检查 DNS、网络或更新代理。': 'Online update failed: the server cannot resolve the GitHub domain. Check DNS, network connectivity, or the update proxy.',
+  '在线更新失败：远端仓库认证失败。请检查仓库地址、访问权限或凭据配置。': 'Online update failed: remote repository authentication failed. Check the repository URL, access permissions, or credentials.',
   'language endpoint not found; rebuild and restart the server binary': 'Language endpoint not found; rebuild and restart the server binary.'
 };
+
+const duplicateEnglish = new Set<string>();
+const zhByEn = Object.entries(en).reduce<Record<string, string>>((out, [zh, translated]) => {
+  if (duplicateEnglish.has(translated)) {
+    return out;
+  }
+  if (Object.prototype.hasOwnProperty.call(out, translated)) {
+    delete out[translated];
+    duplicateEnglish.add(translated);
+  } else {
+    out[translated] = zh;
+  }
+  return out;
+}, {});
 
 const enPatterns: Array<[RegExp, string]> = [
   [/^(\d+) 台设备，(\d+) 块 GPU，按最新上报状态汇总。$/, '$1 devices, $2 GPUs, summarized from the latest reports.'],
@@ -366,9 +391,12 @@ export function makeTranslator(language: AppLanguage): Translate {
 }
 
 export function translateText(value: string, language: AppLanguage): string {
-  if (language === 'zh-CN') return value;
   const trimmed = value.trim();
   if (!trimmed) return value;
+  if (language === 'zh-CN') {
+    const source = zhByEn[trimmed];
+    return source ? value.replace(trimmed, source) : value;
+  }
   const exact = en[trimmed];
   if (exact) return value.replace(trimmed, exact);
   for (const [pattern, replacement] of enPatterns) {

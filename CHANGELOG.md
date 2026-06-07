@@ -77,6 +77,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed sparklines repeatedly rebuilding as GPU snapshots changed, and appends the current snapshot to chart tails so overview and GPU monitoring power trends match the current value.
 - zh-CN: 调小总览和 GPU 监控页顶部迷你图表悬浮提示的数值字号，避免提示层遮挡时过于突兀。
 - en-US: Reduced the value font size in top metric sparkline hover tooltips on Overview and GPU monitoring so the overlay feels less intrusive.
+- zh-CN: 修复英文界面下数据库下载、磁盘预留和部分更新提示仍可能显示中文的问题，切回中文时也会立即恢复中文文案。
+- en-US: Fixed Database Download, Disk Reserve, and some update messages still showing Chinese in English mode, and made switching back to Chinese apply immediately.
+- zh-CN: 访客页面语言改为跟随访客浏览器语言，不再沿用管理员保存的界面语言。
+- en-US: Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.
 
 ## [0.1.6] - 2026-06-05
 

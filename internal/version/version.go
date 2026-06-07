@@ -264,6 +264,8 @@ func Changelog() []ChangelogEntry {
 				"修复离线 GPU 重新上线后，总览和 GPU 监控页小图表可能继续沿用空曲线缓存的问题，并统一 GPU 详情数值悬浮提示样式。",
 				"修复 GPU 最新快照变化时小图表反复重建刷新的问题，并将当前快照补入曲线末端，让总览和 GPU 监控页的总功耗曲线与当前数值保持一致。",
 				"调小总览和 GPU 监控页顶部迷你图表悬浮提示的数值字号，避免提示层遮挡时过于突兀。",
+				"修复英文界面下数据库下载、磁盘预留和部分更新提示仍可能显示中文的问题，切回中文时也会立即恢复中文文案。",
+				"访客页面语言改为跟随访客浏览器语言，不再沿用管理员保存的界面语言。",
 			},
 			FixedEN: []string{
 				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
@@ -271,6 +273,8 @@ func Changelog() []ChangelogEntry {
 				"Fixed overview and GPU monitoring sparklines potentially reusing empty series caches after an offline GPU comes back online, and aligned GPU detail value hover tooltips with the chart tooltip style.",
 				"Fixed sparklines repeatedly rebuilding as GPU snapshots changed, and appends the current snapshot to chart tails so overview and GPU monitoring power trends match the current value.",
 				"Reduced the value font size in top metric sparkline hover tooltips on Overview and GPU monitoring so the overlay feels less intrusive.",
+				"Fixed Database Download, Disk Reserve, and some update messages still showing Chinese in English mode, and made switching back to Chinese apply immediately.",
+				"Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.",
 			},
 		},
 		{
