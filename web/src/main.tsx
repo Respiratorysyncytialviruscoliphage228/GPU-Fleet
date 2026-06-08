@@ -100,16 +100,16 @@ type PendingUpdateNotice = {
   previous_commit?: string;
   target_commit?: string;
   previous_version?: string;
+  current_commit?: string;
+  current_version?: string;
+  summary?: string[];
+  summary_en?: string[];
   restart_at?: string;
   started_at: string;
 };
 type CompletedUpdateNotice = PendingUpdateNotice & {
   product?: string;
-  current_commit?: string;
-  current_version?: string;
   updated_at?: string;
-  summary?: string[];
-  summary_en?: string[];
   completed_at: string;
 };
 
@@ -266,6 +266,13 @@ function completedNoticeFromServer(notice?: UpdateNotice): CompletedUpdateNotice
   };
 }
 
+function hasMeaningfulUpdateSummary(notice?: Pick<CompletedUpdateNotice, 'summary' | 'summary_en'>) {
+  const items = [...(notice?.summary ?? []), ...(notice?.summary_en ?? [])]
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.some((item) => item !== '无更新说明' && item !== 'No update notes.' && item !== 'No update notes');
+}
+
 async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
   const deadline = Date.now() + 90_000;
   const minimumWaitUntil = Date.now() + 2_000;
@@ -282,7 +289,7 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
         const serverNotice = await getUpdateNotice()
           .then((result) => completedNoticeFromServer(result.notice))
           .catch(() => undefined);
-        writeJSON(updateNoticeKey, serverNotice ?? {
+        writeJSON(updateNoticeKey, (hasMeaningfulUpdateSummary(serverNotice) ? serverNotice : undefined) ?? {
           ...pending,
           product: release?.product,
           current_commit: status.local_commit || release?.commit,
@@ -2258,10 +2265,16 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       setProgressStep(3);
       if (result.restarting) {
         setProgressStep(4);
+        const resultNotice = completedNoticeFromServer(result.notice);
         const pending = {
-          previous_commit: status?.local_commit,
-          target_commit: result.status.local_commit || status?.remote_commit,
-          previous_version: release.data?.version,
+          kind: resultNotice?.kind || 'update',
+          previous_commit: resultNotice?.previous_commit || status?.local_commit,
+          target_commit: resultNotice?.target_commit || result.status.local_commit || status?.remote_commit,
+          previous_version: resultNotice?.previous_version || release.data?.version,
+          current_commit: resultNotice?.current_commit,
+          current_version: resultNotice?.current_version,
+          summary: resultNotice?.summary,
+          summary_en: resultNotice?.summary_en,
           restart_at: result.restart_at,
           started_at: new Date().toISOString()
         };

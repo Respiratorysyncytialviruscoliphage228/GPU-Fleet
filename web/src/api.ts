@@ -218,6 +218,7 @@ export type UpdateDependencyStatus = {
 export type UpdateApplyResponse = {
   ok: boolean;
   status: UpdateStatus;
+  notice?: UpdateNotice;
   output?: string;
   build_output?: string;
   dependency_status?: UpdateDependencyStatus;

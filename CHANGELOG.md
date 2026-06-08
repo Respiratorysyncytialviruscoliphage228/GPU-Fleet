@@ -91,6 +91,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed manual online updates only showing a version-updated dialog after restart; manual updates now reuse the server-side changelog diff summary too.
 - zh-CN: 修复系统更新重启后仍沿用浏览器旧更新状态缓存，导致设置入口继续提示有新版本的问题；更新恢复后会立即刷新并写入最新检查状态。
 - en-US: Fixed stale browser update-status caches after a system update restart that kept Settings flagged as having an update; recovery now refreshes and stores the latest check immediately.
+- zh-CN: 修复仅重建落后服务端二进制时更新说明仍显示“无更新说明”的问题，现在会按运行中的 commit 到目标 commit 计算 changelog 差异，并在前端保留更新响应里的说明作为重启回退。
+- en-US: Fixed rebuild-only updates for stale server binaries still showing "No update notes"; changelog diffs now compare the running commit to the target commit, and the frontend keeps response notes as a restart fallback.
 
 ## [0.1.6] - 2026-06-05
 

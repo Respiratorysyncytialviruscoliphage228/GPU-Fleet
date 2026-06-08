@@ -62,6 +62,7 @@ type updateDependencyStatus struct {
 type updateApplyResponse struct {
 	OK               bool                   `json:"ok"`
 	Status           updateStatus           `json:"status"`
+	Notice           *UpdateNotice          `json:"notice,omitempty"`
 	Output           string                 `json:"output,omitempty"`
 	BuildOutput      string                 `json:"build_output,omitempty"`
 	DependencyStatus updateDependencyStatus `json:"dependency_status,omitempty"`
@@ -206,7 +207,8 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 	if !status.Available && status.BinaryOutdated {
 		targetCommit = status.LocalCommit
 	}
-	beforeChangelog, _ := a.changelogAt(ctx, status.LocalCommit)
+	noticeBeforeStatus := updateNoticeBeforeStatus(status, targetCommit)
+	beforeChangelog, _ := a.changelogAt(ctx, noticeBeforeStatus.LocalCommit)
 	targetChangelog, _ := a.changelogAt(ctx, targetCommit)
 	buildResult, err := a.updateBuildServer(buildCtx, updateBuildRequest{
 		RepoDir:      a.config.RepoDir,
@@ -258,7 +260,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		if automatic {
 			noticeKind = "auto_update"
 		}
-		_ = a.saveUpdateNoticeFromChangelog(noticeKind, status, finalStatus, targetCommit, beforeChangelog, targetChangelog, startedAt, restartAt)
+		notice, _ := a.saveUpdateNoticeFromChangelog(noticeKind, noticeBeforeStatus, finalStatus, targetCommit, beforeChangelog, targetChangelog, startedAt, restartAt)
 		if status.BinaryOutdated && !status.Available {
 			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("rebuilt %s from repository commit %s and scheduled automatic restart", version.String(), shortCommit(targetCommit)))
 		} else {
@@ -278,6 +280,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 			Output:           limitText(output, updateOutputLimit),
 			BuildOutput:      limitText(buildResult.Output, updateOutputLimit),
 			DependencyStatus: deps,
+			Notice:           notice,
 			RestartRequired:  true,
 			Restarting:       true,
 			RestartAt:        restartAt,
@@ -356,15 +359,16 @@ func (a *App) cachedUpdateStatusLocked(maxAge time.Duration) (updateStatus, bool
 
 func (a *App) saveAutomaticUpdateNotice(ctx context.Context, beforeStatus, finalStatus updateStatus, targetCommit string, startedAt, restartAt time.Time) error {
 	summary, summaryEN := a.updateSummary(ctx, beforeStatus.LocalCommit, targetCommit)
-	return a.saveUpdateNoticeWithSummary("auto_update", beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+	_, err := a.saveUpdateNoticeWithSummary("auto_update", beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+	return err
 }
 
-func (a *App) saveUpdateNoticeFromChangelog(kind string, beforeStatus, finalStatus updateStatus, targetCommit, beforeRaw, targetRaw string, startedAt, restartAt time.Time) error {
+func (a *App) saveUpdateNoticeFromChangelog(kind string, beforeStatus, finalStatus updateStatus, targetCommit, beforeRaw, targetRaw string, startedAt, restartAt time.Time) (*UpdateNotice, error) {
 	summary, summaryEN := updateSummaryFromChangelog(beforeRaw, targetRaw)
 	return a.saveUpdateNoticeWithSummary(kind, beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
 }
 
-func (a *App) saveUpdateNoticeWithSummary(kind string, beforeStatus, finalStatus updateStatus, targetCommit string, summary, summaryEN []string, startedAt, restartAt time.Time) error {
+func (a *App) saveUpdateNoticeWithSummary(kind string, beforeStatus, finalStatus updateStatus, targetCommit string, summary, summaryEN []string, startedAt, restartAt time.Time) (*UpdateNotice, error) {
 	if strings.TrimSpace(kind) == "" {
 		kind = "update"
 	}
@@ -391,7 +395,23 @@ func (a *App) saveUpdateNoticeWithSummary(kind string, beforeStatus, finalStatus
 		Summary:         summary,
 		SummaryEN:       summaryEN,
 	}
-	return a.meta.SaveUpdateNotice(notice)
+	if err := a.meta.SaveUpdateNotice(notice); err != nil {
+		return nil, err
+	}
+	return &notice, nil
+}
+
+func updateNoticeBeforeStatus(status updateStatus, targetCommit string) updateStatus {
+	before := status
+	runningCommit := strings.TrimSpace(status.RunningCommit)
+	targetCommit = strings.TrimSpace(targetCommit)
+	if runningCommit != "" && runningCommit != "dev" && runningCommit != targetCommit {
+		before.LocalCommit = runningCommit
+		if strings.TrimSpace(status.RunningVersion) != "" {
+			before.RepoVersion = status.RunningVersion
+		}
+	}
+	return before
 }
 
 func (a *App) updateSummary(ctx context.Context, beforeCommit, targetCommit string) ([]string, []string) {

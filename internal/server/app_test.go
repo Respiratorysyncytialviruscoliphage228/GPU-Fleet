@@ -422,12 +422,39 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "internal", "version", "version.go"), []byte("package version\n\nvar (\n\tVersion = \"9.9.9\"\n)\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git(t, source, "add", "cmd/gpufleet-server/main.go", "internal/version/version.go")
+	if err := os.WriteFile(filepath.Join(source, "CHANGELOG.md"), []byte(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 初始二进制说明。
+- en-US: Initial binary note.
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "CHANGELOG.md", "cmd/gpufleet-server/main.go", "internal/version/version.go")
 	git(t, source, "commit", "-m", "initial")
+	initialCommit := strings.TrimSpace(git(t, source, "rev-parse", "HEAD"))
+	if err := os.WriteFile(filepath.Join(source, "CHANGELOG.md"), []byte(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 初始二进制说明。
+- en-US: Initial binary note.
+- zh-CN: 二进制落后重建后显示说明。
+- en-US: Rebuilds for stale binaries show update notes.
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "CHANGELOG.md")
+	git(t, source, "commit", "-m", "update changelog")
 	git(t, source, "remote", "add", "origin", remote)
 	git(t, source, "push", "-u", "origin", "main")
 	git(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
 	git(t, root, "clone", remote, local)
+
+	oldCommit := version.Commit
+	version.Commit = initialCommit
+	defer func() { version.Commit = oldCommit }()
 
 	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), local)
 	var buildReq updateBuildRequest
@@ -464,6 +491,12 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	}
 	if restartReq.CurrentExe == "" || restartReq.NextExe == "" || restartReq.PID <= 0 || !restartReq.ReplaceExecutable {
 		t.Fatalf("expected executable replacement restart, got %+v", restartReq)
+	}
+	if applied.Notice == nil || len(applied.Notice.Summary) != 1 || applied.Notice.Summary[0] != "二进制落后重建后显示说明。" {
+		t.Fatalf("expected rebuild notice summary from running commit, got %+v", applied.Notice)
+	}
+	if applied.Notice.PreviousCommit != initialCommit {
+		t.Fatalf("expected previous commit to use running commit %s, got %+v", initialCommit, applied.Notice)
 	}
 }
 
