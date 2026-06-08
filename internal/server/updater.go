@@ -206,11 +206,8 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 	if !status.Available && status.BinaryOutdated {
 		targetCommit = status.LocalCommit
 	}
-	beforeChangelog, targetChangelog := "", ""
-	if automatic {
-		beforeChangelog, _ = a.changelogAt(ctx, status.LocalCommit)
-		targetChangelog, _ = a.changelogAt(ctx, targetCommit)
-	}
+	beforeChangelog, _ := a.changelogAt(ctx, status.LocalCommit)
+	targetChangelog, _ := a.changelogAt(ctx, targetCommit)
 	buildResult, err := a.updateBuildServer(buildCtx, updateBuildRequest{
 		RepoDir:      a.config.RepoDir,
 		RemoteCommit: targetCommit,
@@ -257,9 +254,11 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 			_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
 			return updateApplyResponse{}, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500))
 		}
+		noticeKind := "update"
 		if automatic {
-			_ = a.saveAutomaticUpdateNoticeFromChangelog(status, finalStatus, targetCommit, beforeChangelog, targetChangelog, startedAt, restartAt)
+			noticeKind = "auto_update"
 		}
+		_ = a.saveUpdateNoticeFromChangelog(noticeKind, status, finalStatus, targetCommit, beforeChangelog, targetChangelog, startedAt, restartAt)
 		if status.BinaryOutdated && !status.Available {
 			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("rebuilt %s from repository commit %s and scheduled automatic restart", version.String(), shortCommit(targetCommit)))
 		} else {
@@ -357,15 +356,18 @@ func (a *App) cachedUpdateStatusLocked(maxAge time.Duration) (updateStatus, bool
 
 func (a *App) saveAutomaticUpdateNotice(ctx context.Context, beforeStatus, finalStatus updateStatus, targetCommit string, startedAt, restartAt time.Time) error {
 	summary, summaryEN := a.updateSummary(ctx, beforeStatus.LocalCommit, targetCommit)
-	return a.saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+	return a.saveUpdateNoticeWithSummary("auto_update", beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
 }
 
-func (a *App) saveAutomaticUpdateNoticeFromChangelog(beforeStatus, finalStatus updateStatus, targetCommit, beforeRaw, targetRaw string, startedAt, restartAt time.Time) error {
+func (a *App) saveUpdateNoticeFromChangelog(kind string, beforeStatus, finalStatus updateStatus, targetCommit, beforeRaw, targetRaw string, startedAt, restartAt time.Time) error {
 	summary, summaryEN := updateSummaryFromChangelog(beforeRaw, targetRaw)
-	return a.saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+	return a.saveUpdateNoticeWithSummary(kind, beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
 }
 
-func (a *App) saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus updateStatus, targetCommit string, summary, summaryEN []string, startedAt, restartAt time.Time) error {
+func (a *App) saveUpdateNoticeWithSummary(kind string, beforeStatus, finalStatus updateStatus, targetCommit string, summary, summaryEN []string, startedAt, restartAt time.Time) error {
+	if strings.TrimSpace(kind) == "" {
+		kind = "update"
+	}
 	if len(summary) == 0 && len(summaryEN) == 0 {
 		summary = []string{"无更新说明"}
 		summaryEN = []string{"No update notes."}
@@ -376,7 +378,7 @@ func (a *App) saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus upd
 	}
 	notice := UpdateNotice{
 		ID:              strings.TrimSpace(targetCommit) + "-" + strconv.FormatInt(time.Now().UTC().Unix(), 10),
-		Kind:            "auto_update",
+		Kind:            kind,
 		Product:         version.Product,
 		PreviousCommit:  beforeStatus.LocalCommit,
 		TargetCommit:    targetCommit,

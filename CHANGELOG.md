@@ -87,6 +87,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.
 - zh-CN: 修复自动更新完成提示始终显示“无更新说明”的问题，现在会在拉取前比较旧提交和目标提交的 changelog 差异。
 - en-US: Fixed automatic update completion notices always showing "No update notes"; changelog differences are now compared before the pull using the old and target commits.
+- zh-CN: 修复手动在线更新重启后只显示版本更新、不显示变更内容的问题，手动更新现在也会复用服务端 changelog 差异摘要。
+- en-US: Fixed manual online updates only showing a version-updated dialog after restart; manual updates now reuse the server-side changelog diff summary too.
 
 ## [0.1.6] - 2026-06-05
 

@@ -271,7 +271,10 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
       const reachedTarget = !pending.target_commit || status.local_commit === pending.target_commit || status.remote_commit === pending.target_commit;
       if (Date.now() >= minimumWaitUntil && (sawFailure || reachedTarget)) {
         window.localStorage.removeItem(updatePendingKey);
-        writeJSON(updateNoticeKey, {
+        const serverNotice = await getUpdateNotice()
+          .then((result) => completedNoticeFromServer(result.notice))
+          .catch(() => undefined);
+        writeJSON(updateNoticeKey, serverNotice ?? {
           ...pending,
           product: release?.product,
           current_commit: status.local_commit || release?.commit,
@@ -1765,6 +1768,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
   const isCertificate = notice.kind === 'certificate';
   const isRestart = notice.kind === 'restart';
   const isAutomatic = notice.kind === 'auto_update';
+  const isUpdate = !isCertificate && !isRestart;
   const from = shortHash(notice.previous_commit);
   const to = shortHash(notice.current_commit || notice.target_commit);
   const versionText = notice.current_version ? `v${notice.current_version}` : '-';
@@ -1782,7 +1786,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
           <h2 id="update-notice-title">{title}</h2>
           <p>{body}</p>
         </div>
-        {!isCertificate && !isRestart && <div className="confirm-target update-notice-grid">
+        {isUpdate && <div className="confirm-target update-notice-grid">
           <div>
             <span>{t('版本')}</span>
             <strong>{versionText}</strong>
@@ -1796,7 +1800,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
             <strong>{fmtDateTime(updateTime)}</strong>
           </div>
         </div>}
-        {isAutomatic && (
+        {isUpdate && (
           <div className="confirm-target update-summary">
             <span>{t('更新内容')}</span>
             <ul>

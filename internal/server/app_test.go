@@ -281,7 +281,16 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "version.txt"), []byte("v1"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git(t, source, "add", "cmd/gpufleet-server/main.go", "version.txt")
+	if err := os.WriteFile(filepath.Join(source, "CHANGELOG.md"), []byte(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 初始更新说明。
+- en-US: Initial update note.
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "CHANGELOG.md", "cmd/gpufleet-server/main.go", "version.txt")
 	git(t, source, "commit", "-m", "initial")
 	git(t, source, "remote", "add", "origin", remote)
 	git(t, source, "push", "-u", "origin", "main")
@@ -320,7 +329,18 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "version.txt"), []byte("v2"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git(t, source, "add", "version.txt")
+	if err := os.WriteFile(filepath.Join(source, "CHANGELOG.md"), []byte(`## [0.1.7] - 2026-06-08
+
+### Changed / 变更
+
+- zh-CN: 初始更新说明。
+- en-US: Initial update note.
+- zh-CN: 手动更新后显示变更内容。
+- en-US: Manual updates show release notes after restart.
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "CHANGELOG.md", "version.txt")
 	git(t, source, "commit", "-m", "update version")
 	git(t, source, "push")
 
@@ -350,6 +370,19 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	}
 	if string(raw) != "v2" {
 		t.Fatalf("expected local checkout to be updated to v2, got %q", raw)
+	}
+	var noticeResponse struct {
+		Notice *UpdateNotice `json:"notice"`
+	}
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/notice", nil, cookie, http.StatusOK, &noticeResponse)
+	if noticeResponse.Notice == nil || noticeResponse.Notice.Kind != "update" {
+		t.Fatalf("expected manual update notice, got %+v", noticeResponse.Notice)
+	}
+	if len(noticeResponse.Notice.Summary) != 1 || noticeResponse.Notice.Summary[0] != "手动更新后显示变更内容。" {
+		t.Fatalf("expected manual update notice summary, got %+v", noticeResponse.Notice.Summary)
+	}
+	if len(noticeResponse.Notice.SummaryEN) != 1 || noticeResponse.Notice.SummaryEN[0] != "Manual updates show release notes after restart." {
+		t.Fatalf("expected manual update notice English summary, got %+v", noticeResponse.Notice.SummaryEN)
 	}
 
 	if err := os.WriteFile(filepath.Join(local, "dirty.txt"), []byte("dirty"), 0600); err != nil {
