@@ -563,31 +563,52 @@ input:focus-visible {
 .gpu-card-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
-.gpu-card-meta span {
+.gpu-card-meta > span {
+  position: relative;
   min-width: 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
   color: var(--muted);
-  padding: 8px;
-  font-size: 12px;
-  line-height: 1.25;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
 
-.gpu-card-meta span:last-child {
+.gpu-card-meta > span:last-child {
   min-width: 0;
   max-width: 100%;
 }
 
-.gpu-card-meta span.warn {
+.gpu-card-meta > span:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, white);
+  outline-offset: 2px;
+}
+
+.gpu-meta-text {
+  display: block;
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.gpu-card-meta > span.scrolling .gpu-meta-text {
+  animation: gpu-meta-marquee var(--marquee-duration, 4.8s) ease-in-out .45s infinite alternate;
+}
+
+.gpu-card-meta > span.warn {
   border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
   background: var(--warn-soft);
   color: var(--warn);
@@ -2603,6 +2624,11 @@ input[type="file"] {
   to { stroke-dashoffset: 0; }
 }
 
+@keyframes gpu-meta-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(var(--marquee-distance, 0px) * -1)); }
+}
+
 @keyframes tooltip-in {
   from { opacity: 0; transform: translate(-50%, 0); }
   to { opacity: 1; transform: translate(-50%, -6px); }
@@ -2759,7 +2785,14 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
   .gpu-card-meta {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .gpu-card-meta > span {
+    min-height: 22px;
+    padding: 3px 5px;
+    border-radius: 7px;
+    font-size: 10px;
   }
   .main-grid {
     grid-template-columns: 1fr;
@@ -2938,6 +2971,14 @@ input[type="file"] {
   .panel {
     padding: 12px;
   }
+  .gpu-card-meta {
+    gap: 4px;
+  }
+  .gpu-card-meta > span {
+    min-height: 20px;
+    padding: 2px 4px;
+    font-size: 9.2px;
+  }
   .trend-tile {
     min-height: 108px;
     grid-template-rows: auto 46px;
@@ -3025,5 +3066,8 @@ input[type="file"] {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
+  }
+  .gpu-card-meta > span.scrolling .gpu-meta-text {
+    animation: none;
   }
 }

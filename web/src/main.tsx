@@ -1073,13 +1073,55 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
       </div>
 
       <div className="gpu-card-meta">
-        <span className={isPCIeDegraded(item) ? 'warn' : ''} title={pcieTitle(item)}>{pcieLabel(item)}</span>
-        <span className={hasClockThrottle(item) ? 'warn' : ''}>{hasClockThrottle(item) ? 'Throttle' : gpu.pstate || '-'}</span>
-        <span>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</span>
+        <GPUMetaPill className={isPCIeDegraded(item) ? 'warn' : ''} title={pcieTitle(item)}>{pcieLabel(item)}</GPUMetaPill>
+        <GPUMetaPill className={hasClockThrottle(item) ? 'warn' : ''}>{hasClockThrottle(item) ? 'Throttle' : gpu.pstate || '-'}</GPUMetaPill>
+        <GPUMetaPill>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</GPUMetaPill>
       </div>
 
       <GPUTrendGrid item={item} points={points} />
     </article>
+  );
+}
+
+function GPUMetaPill({ children, className = '', title }: { children: string; className?: string; title?: string }) {
+  const pillRef = React.useRef<HTMLSpanElement>(null);
+  const textRef = React.useRef<HTMLSpanElement>(null);
+  const [distance, setDistance] = useState(0);
+
+  useEffect(() => {
+    const measure = () => {
+      const pill = pillRef.current;
+      const text = textRef.current;
+      if (!pill || !text) return;
+      const style = window.getComputedStyle(pill);
+      const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      setDistance(Math.max(0, Math.ceil(text.scrollWidth - pill.clientWidth + horizontalPadding)));
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : undefined;
+    if (observer) {
+      if (pillRef.current) observer.observe(pillRef.current);
+      if (textRef.current) observer.observe(textRef.current);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [children]);
+
+  const scrolling = distance > 1;
+  const duration = Math.min(7.2, Math.max(3.2, distance / 18 + 3));
+  return (
+    <span
+      className={[className, scrolling ? 'scrolling' : ''].filter(Boolean).join(' ')}
+      ref={pillRef}
+      style={{ '--marquee-distance': `${distance}px`, '--marquee-duration': `${duration}s` } as React.CSSProperties}
+      tabIndex={scrolling ? 0 : undefined}
+      title={title ?? children}
+    >
+      <span className="gpu-meta-text" ref={textRef}>{children}</span>
+    </span>
   );
 }
 
