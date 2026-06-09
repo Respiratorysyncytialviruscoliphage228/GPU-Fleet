@@ -19,6 +19,12 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Utilization distribution charts are sorted by utilization and label each bar with the device name plus GPU ID, avoiding ambiguous multi-device `gpu0` labels.
 - zh-CN: 总览巡检摘要新增 PCIe 降级和时钟限速 GPU 计数，并在 GPU 卡片元信息中突出这些需要关注的硬件状态。
 - en-US: Overview inspection facts now include PCIe-degraded and clock-throttled GPU counts, and GPU cards highlight those hardware states in their metadata.
+- zh-CN: 统计面板新增 1H、6H、24H、7D 和 30D 时间范围切换，展开曲线会按所选范围加载。
+- en-US: Stats panels now support 1H, 6H, 24H, 7D, and 30D range switching, and expanded charts load the selected range.
+- zh-CN: 统计面板新增筛选、排序和摘要卡片，可按平均/峰值利用率、空闲率、峰值显存、峰值温度、峰值功耗和样本数分析 GPU。
+- en-US: Stats panels now include filters, sorting, and summary cards for analyzing GPUs by average/peak utilization, idle rate, peak memory, peak temperature, peak power, and sample count.
+- zh-CN: 前端补齐服务端已返回的统计字段，显示采样覆盖范围、平均显存和峰值利用率，减少只看瞬时快照造成的误判。
+- en-US: The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.
 
 ## [0.1.7] - 2026-06-08
 

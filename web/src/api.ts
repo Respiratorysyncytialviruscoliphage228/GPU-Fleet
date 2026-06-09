@@ -91,9 +91,13 @@ export type GPUStats = {
   gpu_id: string;
   gpu_name: string;
   sample_count: number;
+  first_sample_at: string;
+  last_sample_at: string;
   average_utilization_percent?: number;
   peak_utilization_percent?: number;
+  idle_sample_count: number;
   idle_sample_percent: number;
+  average_memory_used_bytes: number;
   peak_memory_used_bytes: number;
   memory_total_bytes: number;
   peak_temperature_celsius?: number;

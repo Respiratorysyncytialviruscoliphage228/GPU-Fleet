@@ -94,6 +94,8 @@ type View = 'overview' | 'devices' | 'gpus' | 'settings';
 type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous' | 'guest';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
+type StatsSortKey = 'avg_util' | 'peak_util' | 'idle' | 'peak_mem' | 'peak_temp' | 'peak_power' | 'samples';
+type StatsFilterKey = 'all' | 'busy' | 'idle' | 'hot';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
 type PendingUpdateNotice = {
   kind?: 'auto_update' | 'update' | 'certificate' | 'restart';
@@ -722,6 +724,7 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
 
 function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: () => void; theme: Theme; onToggleTheme: () => void }) {
   const [view, setView] = useState<View>('overview');
+  const [statsHours, setStatsHours] = useState(24);
   const overview = useQuery({
     queryKey: ['overview'],
     queryFn: getOverview,
@@ -730,8 +733,8 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 3000)
   });
   const stats = useQuery({
-    queryKey: ['stats', 24],
-    queryFn: () => getStats(24),
+    queryKey: ['stats', statsHours],
+    queryFn: () => getStats(statsHours),
     enabled: overview.isSuccess,
     refetchInterval: 30000
   });
@@ -807,8 +810,8 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
         {overview.error && <div className="banner danger">{overview.error.message}</div>}
 
         <div className="view-shell" key={view} data-view={view}>
-          {view === 'overview' && <OverviewPage data={data} statRows={statRows} theme={theme} />}
-          {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} theme={theme} />}
+          {view === 'overview' && <OverviewPage data={data} statRows={statRows} statsHours={statsHours} onStatsHoursChange={setStatsHours} theme={theme} />}
+          {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} statsHours={statsHours} onStatsHoursChange={setStatsHours} theme={theme} />}
           {view === 'devices' && <DeviceAdminPanel data={data} />}
           {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
         </div>
@@ -876,7 +879,21 @@ function GuestDashboard({ theme, onToggleTheme }: { theme: Theme; onToggleTheme:
   );
 }
 
-function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overview; statRows: GPUStats[]; theme: Theme; guest?: boolean }) {
+function OverviewPage({
+  data,
+  statRows,
+  statsHours = 24,
+  onStatsHoursChange,
+  theme,
+  guest = false
+}: {
+  data?: Overview;
+  statRows: GPUStats[];
+  statsHours?: number;
+  onStatsHoursChange?: (hours: number) => void;
+  theme: Theme;
+  guest?: boolean;
+}) {
   const gpus = data?.latest_gpus ?? [];
   const aggregateSeries = useAggregateSeries(gpus, guest);
   const devices = data?.devices ?? [];
@@ -919,14 +936,26 @@ function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overvie
       {!guest && (
         <section className="overview-secondary">
           <ProcessPanel items={data?.latest_processes ?? []} devices={devices} />
-          <StatsPanel statRows={statRows} devices={devices} />
+          <StatsPanel statRows={statRows} devices={devices} hours={statsHours} onHoursChange={onStatsHoursChange} />
         </section>
       )}
     </>
   );
 }
 
-function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
+function GPUDetailPage({
+  data,
+  statRows,
+  statsHours,
+  onStatsHoursChange,
+  theme
+}: {
+  data?: Overview;
+  statRows: GPUStats[];
+  statsHours: number;
+  onStatsHoursChange: (hours: number) => void;
+  theme: Theme;
+}) {
   const gpus = data?.latest_gpus ?? [];
   const deviceMap = useMemo(() => new Map((data?.devices ?? []).map((device) => [device.id, device])), [data?.devices]);
   const aggregateSeries = useAggregateSeries(gpus);
@@ -957,7 +986,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
             </div>
             <UtilChart items={data?.latest_gpus ?? []} devices={data?.devices ?? []} theme={theme} />
           </div>
-          <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
+          <StatsPanel statRows={statRows} devices={data?.devices ?? []} hours={statsHours} onHoursChange={onStatsHoursChange} />
         </div>
         <div className="stack">
           <DevicePanel data={data} />
@@ -1956,17 +1985,59 @@ function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Dev
   );
 }
 
-function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Device[] }) {
+const statsHourOptions = [
+  { hours: 1, label: '1H' },
+  { hours: 6, label: '6H' },
+  { hours: 24, label: '24H' },
+  { hours: 168, label: '7D' },
+  { hours: 720, label: '30D' }
+];
+
+const statsSortOptions: Array<{ key: StatsSortKey; label: string }> = [
+  { key: 'avg_util', label: '按平均利用率' },
+  { key: 'peak_util', label: '按峰值利用率' },
+  { key: 'idle', label: '按空闲率' },
+  { key: 'peak_mem', label: '按峰值显存' },
+  { key: 'peak_temp', label: '按峰值温度' },
+  { key: 'peak_power', label: '按峰值功耗' },
+  { key: 'samples', label: '按样本数' }
+];
+
+const statsFilterOptions: Array<{ key: StatsFilterKey; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'busy', label: '高负载' },
+  { key: 'idle', label: '高空闲' },
+  { key: 'hot', label: '高温' }
+];
+
+function StatsPanel({
+  statRows,
+  devices,
+  hours,
+  onHoursChange
+}: {
+  statRows: GPUStats[];
+  devices: Device[];
+  hours: number;
+  onHoursChange?: (hours: number) => void;
+}) {
   const query = useQueryClient();
-  const deviceByID = new Map(devices.map((device) => [device.id, device]));
+  const { language, t } = useI18n();
+  const deviceByID = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
+  const [sortKey, setSortKey] = useState<StatsSortKey>('avg_util');
+  const [filterKey, setFilterKey] = useState<StatsFilterKey>('all');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const visibleRows = useMemo(() => statRows
+    .filter((row) => statsFilterMatch(row, filterKey))
+    .sort((left, right) => statsSortValue(right, sortKey) - statsSortValue(left, sortKey) || statsRowLabel(left, deviceByID).localeCompare(statsRowLabel(right, deviceByID))), [deviceByID, filterKey, sortKey, statRows]);
+  const summary = useMemo(() => statsSummary(statRows), [statRows]);
   useEffect(() => {
-    const activeRows = statRows.slice(0, 8);
+    const activeRows = visibleRows.slice(0, 8);
     const timers = activeRows.map((row, index) => window.setTimeout(() => {
-      void prefetchStatsSeries(query, row);
+      void prefetchStatsSeries(query, row, hours);
     }, 2500 + index * 220));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [query, statRows]);
+  }, [hours, query, visibleRows]);
   useEffect(() => {
     const current = new Set(statRows.map((row) => statsRowKey(row)));
     setExpanded((previous) => {
@@ -1976,14 +2047,49 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
   }, [statRows]);
   return (
     <section className="panel">
-      <div className="panel-head">
-        <h2>24 小时统计</h2>
-        <span>{statRows.length}</span>
+      <div className="panel-head stats-panel-head">
+        <div>
+          <h2>{t('{range} 统计', { range: statsRangeLabel(hours) })}</h2>
+          <p>{statRows.length} GPUs · {summary.sampleCount} samples</p>
+        </div>
+        <div className="stats-controls">
+          <div className="segmented-control" aria-label={t('统计范围')}>
+            {statsHourOptions.map((option) => (
+              <button
+                className={hours === option.hours ? 'active' : ''}
+                key={option.hours}
+                type="button"
+                onClick={() => onHoursChange?.(option.hours)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <label className="compact-select">
+            <span>{t('筛选')}</span>
+            <select value={filterKey} onChange={(event) => setFilterKey(event.target.value as StatsFilterKey)}>
+              {statsFilterOptions.map((option) => <option key={option.key} value={option.key}>{t(option.label)}</option>)}
+            </select>
+          </label>
+          <label className="compact-select">
+            <span>{t('排序')}</span>
+            <select value={sortKey} onChange={(event) => setSortKey(event.target.value as StatsSortKey)}>
+              {statsSortOptions.map((option) => <option key={option.key} value={option.key}>{t(option.label)}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div className="stats-insights">
+        <div><span>{t('平均利用率')}</span><strong>{pct(summary.averageUtilization)}</strong></div>
+        <div><span>{t('峰值利用率')}</span><strong>{pct(summary.peakUtilization)}</strong></div>
+        <div><span>{t('高空闲')}</span><strong>{summary.idleGPUCount}</strong></div>
+        <div><span>{t('高温')}</span><strong>{summary.hotGPUCount}</strong></div>
       </div>
       <div className="stats-table">
-        {statRows.map((row) => {
+        {visibleRows.map((row) => {
           const key = statsRowKey(row);
           const open = expanded.has(key);
+          const coverage = sampleCoverageText(row, language);
           return (
             <div className="stats-expand-row" key={key}>
               <button
@@ -2000,22 +2106,24 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
                     return next;
                   });
                 }}
-                onPointerEnter={() => prefetchStatsSeries(query, row)}
+                onPointerEnter={() => prefetchStatsSeries(query, row, hours)}
                 aria-expanded={open}
               >
                 <div>
                   <strong>{row.gpu_name || row.gpu_id}</strong>
-                  <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples</p>
+                  <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples · {coverage}</p>
                 </div>
-                <span>{pct(row.average_utilization_percent)}</span>
-                <span>{pct(row.idle_sample_percent)} idle</span>
-                <span>{row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'}</span>
-                <span>{row.peak_power_draw_watts ? `${row.peak_power_draw_watts.toFixed(1)} W` : '-'}</span>
+                <span><small>{t('平均')}</small>{pct(row.average_utilization_percent)}</span>
+                <span><small>{t('峰值')}</small>{pct(row.peak_utilization_percent)}</span>
+                <span><small>{t('空闲')}</small>{pct(row.idle_sample_percent)}</span>
+                <span><small>{t('显存 均/峰')}</small>{fmtMemoryAvgPeak(row.average_memory_used_bytes, row.peak_memory_used_bytes)}</span>
+                <span><small>{t('温度')} / {t('功耗')}</small>{row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'} · {watts(row.peak_power_draw_watts)}</span>
               </button>
-              {open && <StatsTrendCard row={row} />}
+              {open && <StatsTrendCard row={row} hours={hours} />}
             </div>
           );
         })}
+        {visibleRows.length === 0 && <p className="empty">{t('无匹配统计')}</p>}
       </div>
     </section>
   );
@@ -2025,10 +2133,89 @@ function statsRowKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
   return `${row.device_id}-${row.gpu_id}`;
 }
 
-function StatsTrendCard({ row }: { row: GPUStats }) {
+function statsRowLabel(row: Pick<GPUStats, 'device_id' | 'gpu_id' | 'gpu_name'>, deviceByID: Map<string, Device>) {
+  return `${deviceName(deviceByID.get(row.device_id), row.device_id)} ${row.gpu_name || row.gpu_id}`;
+}
+
+function statsFilterMatch(row: GPUStats, filter: StatsFilterKey) {
+  if (filter === 'busy') return (row.average_utilization_percent ?? 0) >= 70;
+  if (filter === 'idle') return row.idle_sample_percent >= 50;
+  if (filter === 'hot') return (row.peak_temperature_celsius ?? 0) >= hotGPUThreshold;
+  return true;
+}
+
+function statsSortValue(row: GPUStats, sort: StatsSortKey) {
+  switch (sort) {
+    case 'peak_util':
+      return row.peak_utilization_percent ?? 0;
+    case 'idle':
+      return row.idle_sample_percent;
+    case 'peak_mem':
+      return row.peak_memory_used_bytes;
+    case 'peak_temp':
+      return row.peak_temperature_celsius ?? 0;
+    case 'peak_power':
+      return row.peak_power_draw_watts ?? 0;
+    case 'samples':
+      return row.sample_count;
+    case 'avg_util':
+    default:
+      return row.average_utilization_percent ?? 0;
+  }
+}
+
+function statsSummary(rows: GPUStats[]) {
+  const utilRows = rows.filter((row) => typeof row.average_utilization_percent === 'number' && Number.isFinite(row.average_utilization_percent));
+  const averageUtilization = utilRows.length ? utilRows.reduce((sum, row) => sum + (row.average_utilization_percent ?? 0), 0) / utilRows.length : undefined;
+  const peakUtilization = maxSeries(rows.map((row) => row.peak_utilization_percent), 0);
+  return {
+    averageUtilization,
+    peakUtilization,
+    sampleCount: rows.reduce((sum, row) => sum + row.sample_count, 0),
+    idleGPUCount: rows.filter((row) => row.idle_sample_percent >= 50).length,
+    hotGPUCount: rows.filter((row) => (row.peak_temperature_celsius ?? 0) >= hotGPUThreshold).length
+  };
+}
+
+function statsRangeLabel(hours: number) {
+  if (hours === 24) return '24H';
+  if (hours >= 24 && hours % 24 === 0) return `${hours / 24}D`;
+  return `${hours}H`;
+}
+
+function sampleCoverageText(row: GPUStats, language: AppLanguage) {
+  if (!row.first_sample_at || !row.last_sample_at) return '-';
+  const first = new Date(row.first_sample_at).getTime();
+  const last = new Date(row.last_sample_at).getTime();
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) {
+    return language === 'en-US' ? 'single point' : '单点';
+  }
+  const minutes = Math.max(1, Math.round((last - first) / 60000));
+  if (language === 'en-US') {
+    if (minutes >= 60 * 24) return `${Math.round(minutes / 60 / 24)}d span`;
+    if (minutes >= 60) return `${Math.round(minutes / 60)}h span`;
+    return `${minutes}m span`;
+  }
+  if (minutes >= 60 * 24) return `跨度 ${Math.round(minutes / 60 / 24)} 天`;
+  if (minutes >= 60) return `跨度 ${Math.round(minutes / 60)} 小时`;
+  return `跨度 ${minutes} 分钟`;
+}
+
+function fmtMemoryAvgPeak(average?: number, peak?: number) {
+  const avgValid = typeof average === 'number' && Number.isFinite(average);
+  const peakValid = typeof peak === 'number' && Number.isFinite(peak);
+  const toG = (value: number) => `${(value / 1024 / 1024 / 1024).toFixed(1)} G`;
+  if (avgValid && peakValid) return `${toG(average)}/${toG(peak)}`;
+  if (avgValid) return toG(average);
+  if (peakValid) return `-/${toG(peak)}`;
+  return '-';
+}
+
+function StatsTrendCard({ row, hours }: { row: GPUStats; hours: number }) {
+  const { t } = useI18n();
   const series = useQuery({
-    queryKey: statsSeriesQueryKey(row),
-    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, 24),
+    queryKey: statsSeriesQueryKey(row, hours),
+    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, hours),
     staleTime: 30_000,
     retry: false
   });
@@ -2038,7 +2225,7 @@ function StatsTrendCard({ row }: { row: GPUStats }) {
     <div className="stats-trend-card">
       <div className="stats-trend-head">
         <div>
-          <strong>过去 24H 曲线</strong>
+          <strong>{t('过去 {range} 曲线', { range: statsRangeLabel(hours) })}</strong>
           <p>{row.gpu_name || row.gpu_id}</p>
         </div>
         <span>{series.isLoading ? '加载中' : `${points.length} samples`}</span>
@@ -2054,14 +2241,14 @@ function StatsTrendCard({ row }: { row: GPUStats }) {
   );
 }
 
-function statsSeriesQueryKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
-  return ['gpu-series-24h', row.device_id, row.gpu_id] as const;
+function statsSeriesQueryKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>, hours: number) {
+  return ['gpu-series-stats', row.device_id, row.gpu_id, hours] as const;
 }
 
-function prefetchStatsSeries(query: QueryClient, row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
+function prefetchStatsSeries(query: QueryClient, row: Pick<GPUStats, 'device_id' | 'gpu_id'>, hours: number) {
   return query.prefetchQuery({
-    queryKey: statsSeriesQueryKey(row),
-    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, 24),
+    queryKey: statsSeriesQueryKey(row, hours),
+    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, hours),
     staleTime: 30_000
   });
 }
