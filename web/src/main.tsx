@@ -49,6 +49,10 @@ import {
   diagnosticsDownloadURL,
   deleteDevice,
   Device,
+  EnergyDiagnostic,
+  EnergyGPUStat,
+  EnergySummaryResponse,
+  getEnergySummary,
   getGPUSeries,
   getGuestGPUSeries,
   getGuestOverview,
@@ -91,7 +95,7 @@ import './styles.css';
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 const queryClient = new QueryClient();
-type View = 'overview' | 'devices' | 'gpus' | 'settings';
+type View = 'overview' | 'devices' | 'gpus' | 'energy' | 'settings';
 type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous' | 'guest';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
@@ -183,6 +187,18 @@ function watts(value?: number) {
   return `${value.toFixed(1)} W`;
 }
 
+function kwh(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(2)} MWh`;
+  if (Math.abs(value) >= 10) return `${value.toFixed(1)} kWh`;
+  return `${value.toFixed(2)} kWh`;
+}
+
+function money(value?: number, currency = 'CNY', configured = true) {
+  if (!configured || typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return `${currency || 'CNY'} ${value.toFixed(2)}`;
+}
+
 function mhz(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
   return `${Math.round(value)} MHz`;
@@ -191,6 +207,16 @@ function mhz(value?: number) {
 function temp(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
   return `${Math.round(value)}°C`;
+}
+
+function sampleCount(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return String(Math.round(value));
+}
+
+function coveragePct(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return `${Math.max(0, Math.min(100, value)).toFixed(0)}%`;
 }
 
 function storedDaysValue(days?: number, fallbackHours?: number) {
@@ -753,6 +779,7 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
 function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: () => void; theme: Theme; onToggleTheme: () => void }) {
   const [view, setView] = useState<View>('overview');
   const [statsHours, setStatsHours] = useState(24);
+  const [energyHours, setEnergyHours] = useState(24);
   const overview = useQuery({
     queryKey: ['overview'],
     queryFn: getOverview,
@@ -765,6 +792,14 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     queryFn: () => getStats(statsHours),
     enabled: overview.isSuccess,
     refetchInterval: 30000
+  });
+  const energy = useQuery({
+    queryKey: ['energy-summary', energyHours],
+    queryFn: () => getEnergySummary(energyHours),
+    enabled: overview.isSuccess,
+    refetchInterval: 30000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1200 * 2 ** attempt, 6000)
   });
   const cachedUpdate = readCachedUpdateStatus();
   const updatePollInterval = overview.data?.service.auto_update_enabled ? autoUpdateStatusTTL : updateStatusCacheTTL;
@@ -798,6 +833,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     overview: 'GPU 资源总览',
     devices: '设备管理',
     gpus: 'GPU 监控',
+    energy: '热能与能源',
     settings: '服务设置'
   };
 
@@ -813,6 +849,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
         <nav>
           <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><Activity size={17} />总览</button>
           <button className={view === 'gpus' ? 'active' : ''} onClick={() => setView('gpus')}><Cpu size={17} />GPU</button>
+          <button className={view === 'energy' ? 'active' : ''} onClick={() => setView('energy')}><Power size={17} />能耗</button>
           <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}><Server size={17} />设备</button>
           <button className={settingsNavClass} onClick={() => setView('settings')}><Settings size={17} />设置</button>
         </nav>
@@ -840,6 +877,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
         <div className="view-shell" key={view} data-view={view}>
           {view === 'overview' && <OverviewPage data={data} statRows={statRows} statsHours={statsHours} onStatsHoursChange={setStatsHours} theme={theme} />}
           {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} statsHours={statsHours} onStatsHoursChange={setStatsHours} theme={theme} />}
+          {view === 'energy' && <EnergyPage data={data} energy={energy.data} error={energy.error instanceof Error ? energy.error.message : ''} loading={energy.isLoading} hours={energyHours} onHoursChange={setEnergyHours} />}
           {view === 'devices' && <DeviceAdminPanel data={data} />}
           {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
         </div>
@@ -1023,6 +1061,231 @@ function GPUDetailPage({
       </section>
     </>
   );
+}
+
+const energyHourOptions = [
+  { hours: 24, label: '24H' },
+  { hours: 168, label: '7D' },
+  { hours: 720, label: '30D' }
+];
+
+function EnergyPage({
+  data,
+  energy,
+  error,
+  loading,
+  hours,
+  onHoursChange
+}: {
+  data?: Overview;
+  energy?: EnergySummaryResponse;
+  error: string;
+  loading: boolean;
+  hours: number;
+  onHoursChange: (hours: number) => void;
+}) {
+  const { language, t } = useI18n();
+  const config = energy?.config ?? data?.service.energy;
+  const summary = energy?.summary;
+  const priceConfigured = (config?.energy_price_per_kwh ?? 0) > 0;
+  const series = energy?.series ?? [];
+  const powerSpark = series.map((point) => ({ value: point.power_watts, timestamp: point.timestamp }));
+  const peakTempSpark = series
+    .filter((point) => typeof point.peak_temperature_celsius === 'number')
+    .map((point) => ({ value: point.peak_temperature_celsius ?? 0, timestamp: point.timestamp }));
+
+  return (
+    <>
+      <section className="stat-grid energy-stat-grid" data-testid="energy-page">
+        <Metric icon={<Power />} label={t('当前功率')} value={watts(summary?.current_power_watts)} tone={(summary?.current_power_watts ?? 0) > 0 ? 'accent' : 'ok'} spark={{ label: t('总功耗'), samples: powerSpark, max: maxSeries(powerSpark.map((sample) => sample.value), Math.max(summary?.current_power_watts ?? 1, 1)), formatValue: watts, tone: 'accent' }} />
+        <Metric icon={<Database />} label={t('{range} 耗电', { range: statsRangeLabel(hours) })} value={kwh(summary?.energy_kwh)} tone={(summary?.energy_kwh ?? 0) > 0 ? 'accent' : 'ok'} />
+        <Metric icon={<Gauge />} label={t('估算电费')} value={money(summary?.estimated_cost, summary?.currency || config?.energy_currency, priceConfigured)} />
+        <Metric icon={<Activity />} label={t('高温 GPU')} value={sampleCount(summary?.hot_gpu_count)} tone={(summary?.hot_gpu_count ?? 0) > 0 ? 'critical' : 'ok'} spark={{ label: t('峰值温度'), samples: peakTempSpark, max: 100, formatValue: temp, tone: (summary?.hot_gpu_count ?? 0) > 0 ? 'bad' : 'good' }} />
+        <Metric icon={<MonitorUp />} label={t('空转高耗')} value={kwh(summary?.idle_waste_kwh)} tone={(summary?.high_idle_power_gpu_count ?? 0) > 0 ? 'warning' : 'ok'} />
+      </section>
+
+      <section className="energy-toolbar panel">
+        <div>
+          <h2>{t('热能与能源')}</h2>
+          <p>{loading && !energy ? t('加载中') : `${energy?.gpus.length ?? data?.gpu_count ?? 0} GPUs · ${coveragePct(summary?.coverage_percent)} ${t('覆盖率')}`}</p>
+        </div>
+        <div className="segmented-control" aria-label={t('统计范围')}>
+          {energyHourOptions.map((option) => (
+            <button
+              className={hours === option.hours ? 'active' : ''}
+              key={option.hours}
+              type="button"
+              onClick={() => onHoursChange(option.hours)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {error && <div className="banner danger">{error}</div>}
+
+      <section className="energy-layout">
+        <EnergyTrendPanel energy={energy} hours={hours} />
+        <EnergyDiagnosticsPanel diagnostics={energy?.diagnostics ?? []} language={language} />
+      </section>
+
+      <EnergyGPUTable rows={energy?.gpus ?? []} config={config} language={language} />
+    </>
+  );
+}
+
+function EnergyTrendPanel({ energy, hours }: { energy?: EnergySummaryResponse; hours: number }) {
+  const { t } = useI18n();
+  const summary = energy?.summary;
+  const series = energy?.series ?? [];
+  const timestamps = series.map((point) => point.timestamp);
+  const powerValues = series.map((point) => point.power_watts);
+  const peakTempValues = series.map((point) => point.peak_temperature_celsius);
+  const hotValues = series.map((point) => point.hot_gpu_count);
+
+  return (
+    <section className="panel energy-trend-panel">
+      <div className="panel-head">
+        <div>
+          <h2>{t('功率与热状态')}</h2>
+          <p>{t('过去 {range} 曲线', { range: statsRangeLabel(hours) })}</p>
+        </div>
+        <span>{series.length} samples</span>
+      </div>
+      <div className="gpu-detail-trend-grid energy-trend-grid">
+        <TrendTile label={t('总功耗')} value={watts(summary?.peak_power_watts)} caption={t('峰值')} values={powerValues} timestamps={timestamps} max={maxSeries(powerValues, Math.max(summary?.peak_power_watts ?? 1, 1))} tone="accent" formatValue={watts} />
+        <TrendTile label={t('峰值温度')} value={temp(maxSeries(peakTempValues, 0))} caption={t('峰值')} values={peakTempValues} timestamps={timestamps} max={100} tone={metricTone(maxSeries(peakTempValues, 0), 80, 88)} formatValue={temp} />
+        <TrendTile label={t('高温 GPU')} value={sampleCount(summary?.hot_gpu_count)} caption={t('当前快照')} values={hotValues} timestamps={timestamps} max={Math.max(1, maxSeries(hotValues, summary?.hot_gpu_count ?? 1))} tone={(summary?.hot_gpu_count ?? 0) > 0 ? 'bad' : 'good'} formatValue={sampleCount} />
+      </div>
+    </section>
+  );
+}
+
+function EnergyDiagnosticsPanel({ diagnostics, language }: { diagnostics: EnergyDiagnostic[]; language: AppLanguage }) {
+  const { t } = useI18n();
+  return (
+    <section className="panel energy-diagnostics-panel">
+      <div className="panel-head">
+        <div>
+          <h2>{t('能源诊断')}</h2>
+          <p>{diagnostics.length ? `${diagnostics.length} items` : t('当前范围未发现异常')}</p>
+        </div>
+        <span>{diagnostics.length}</span>
+      </div>
+      <div className="energy-diagnostics-list">
+        {diagnostics.slice(0, 8).map((item, index) => {
+          const copy = energyDiagnosticCopy(item, language, t);
+          return (
+            <div className={`energy-diagnostic ${item.severity}`} key={`${item.kind}-${item.device_id}-${item.gpu_id}-${index}`}>
+              <span className={`status-dot ${diagnosticTone(item.severity)}`} />
+              <div>
+                <strong>{copy.title}</strong>
+                <p>{copy.body}</p>
+              </div>
+            </div>
+          );
+        })}
+        {diagnostics.length === 0 && <p className="empty">{t('当前范围未发现高温、限速或空转高耗')}</p>}
+      </div>
+    </section>
+  );
+}
+
+function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; config?: EnergySummaryResponse['config']; language: AppLanguage }) {
+  const { t } = useI18n();
+  const priceConfigured = (config?.energy_price_per_kwh ?? 0) > 0;
+  return (
+    <section className="panel energy-gpu-panel">
+      <div className="panel-head">
+        <div>
+          <h2>{t('GPU 能耗排行')}</h2>
+          <p>{rows.length} GPUs</p>
+        </div>
+        <span>{t('只读')}</span>
+      </div>
+      <div className="energy-gpu-table">
+        {rows.map((row) => {
+          const tone = energyRowTone(row, config);
+          const deviceColor = deviceBorderColor(row.device_id);
+          return (
+            <div className={`energy-gpu-row ${tone}`} key={`${row.device_id}-${row.gpu_id}`} style={{ '--device-color': deviceColor } as React.CSSProperties}>
+              <div>
+                <strong>{row.gpu_name || row.gpu_id}</strong>
+                <p>{row.device_alias || row.device_id} · {row.gpu_id} · {sampleCount(row.sample_count)} samples</p>
+              </div>
+              <span><small>{t('耗电')}</small>{kwh(row.energy_kwh)}</span>
+              <span><small>{t('电费')}</small>{money(row.estimated_cost, config?.energy_currency, priceConfigured)}</span>
+              <span><small>{t('功率')}</small>{watts(row.average_power_watts)} / {watts(row.peak_power_watts)}</span>
+              <span><small>{t('峰值温度')}</small>{temp(row.peak_temperature_celsius)}</span>
+              <span><small>{t('空转高耗')}</small>{row.idle_waste_kwh > 0 ? `${kwh(row.idle_waste_kwh)} · ${durationText(row.high_idle_power_seconds, language)}` : '-'}</span>
+              <span><small>{t('覆盖率')}</small>{coveragePct(row.coverage_percent)}</span>
+              <span className={`pill ${tone}`}>{energyRowLabel(row, config, t)}</span>
+            </div>
+          );
+        })}
+        {rows.length === 0 && <p className="empty">{t('暂无能耗数据')}</p>}
+      </div>
+    </section>
+  );
+}
+
+function energyDiagnosticCopy(item: EnergyDiagnostic, language: AppLanguage, t: ReturnType<typeof makeTranslator>) {
+  const target = [item.device_alias || item.device_id, item.gpu_name || item.gpu_id].filter(Boolean).join(' · ') || '-';
+  if (item.kind === 'thermal') {
+    return {
+      title: t('高温 GPU'),
+      body: `${target} · ${temp(item.value)}`
+    };
+  }
+  if (item.kind === 'throttle') {
+    return {
+      title: t('限速 GPU'),
+      body: `${target}${item.reason ? ` · ${item.reason}` : ''}`
+    };
+  }
+  if (item.kind === 'idle_waste') {
+    return {
+      title: t('空转高耗'),
+      body: `${target} · ${kwh(item.value)}`
+    };
+  }
+  return {
+    title: item.kind,
+    body: language === 'en-US' ? target : target
+  };
+}
+
+function diagnosticTone(severity: string) {
+  if (severity === 'critical') return 'bad';
+  if (severity === 'warning') return 'warn';
+  return 'good';
+}
+
+function energyRowTone(row: EnergyGPUStat, config?: EnergySummaryResponse['config']) {
+  if ((row.peak_temperature_celsius ?? 0) >= (config?.thermal_hot_celsius ?? hotGPUThreshold)) return 'bad';
+  if (row.throttled || row.idle_waste_kwh > 0) return 'warn';
+  return 'good';
+}
+
+function energyRowLabel(row: EnergyGPUStat, config: EnergySummaryResponse['config'] | undefined, t: ReturnType<typeof makeTranslator>) {
+  if ((row.peak_temperature_celsius ?? 0) >= (config?.thermal_hot_celsius ?? hotGPUThreshold)) return t('高温');
+  if (row.throttled) return t('限速');
+  if (row.idle_waste_kwh > 0) return t('空转');
+  return t('正常');
+}
+
+function durationText(seconds: number | undefined, language: AppLanguage) {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return '-';
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (language === 'en-US') {
+    if (minutes >= 60 * 24) return `${Math.round(minutes / 60 / 24)}d`;
+    if (minutes >= 60) return `${Math.round(minutes / 60)}h`;
+    return `${minutes}m`;
+  }
+  if (minutes >= 60 * 24) return `${Math.round(minutes / 60 / 24)} 天`;
+  if (minutes >= 60) return `${Math.round(minutes / 60)} 小时`;
+  return `${minutes} 分钟`;
 }
 
 function FleetKPI({ label, value, tone, spark }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'accent'; spark?: { label: string; samples: Array<{ value: number; timestamp?: string }>; max: number; formatValue: (value?: number) => string; tone?: TrendTone } }) {
@@ -2466,6 +2729,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           </div>
           <DatabaseSettings data={data} />
           <DiskReserveSettings data={data} onDone={refreshOverview} />
+          <EnergyDisplaySettings service={service} onDone={refreshOverview} />
           <UpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
@@ -3148,6 +3412,93 @@ function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: ()
       <form className="settings-form inline" onSubmit={submit}>
         <label>访问端口<input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" /></label>
         <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存端口'}</button>
+      </form>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function EnergyDisplaySettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const query = useQueryClient();
+  const { t } = useI18n();
+  const settings = service?.energy;
+  const [price, setPrice] = useState(String(settings?.energy_price_per_kwh ?? 0));
+  const [currency, setCurrency] = useState(settings?.energy_currency || 'CNY');
+  const [hot, setHot] = useState(String(settings?.thermal_hot_celsius ?? hotGPUThreshold));
+  const [idleUtil, setIdleUtil] = useState(String(settings?.idle_utilization_percent ?? 5));
+  const [idlePower, setIdlePower] = useState(String(settings?.idle_power_watts ?? 30));
+  const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setPrice(String(settings?.energy_price_per_kwh ?? 0));
+    setCurrency(settings?.energy_currency || 'CNY');
+    setHot(String(settings?.thermal_hot_celsius ?? hotGPUThreshold));
+    setIdleUtil(String(settings?.idle_utilization_percent ?? 5));
+    setIdlePower(String(settings?.idle_power_watts ?? 30));
+  }, [settings?.energy_currency, settings?.energy_price_per_kwh, settings?.idle_power_watts, settings?.idle_utilization_percent, settings?.thermal_hot_celsius]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    const parsedPrice = Number(price);
+    const parsedHot = Number(hot);
+    const parsedIdleUtil = Number(idleUtil);
+    const parsedIdlePower = Number(idlePower);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setMessage(t('电价不能为负数'));
+      return;
+    }
+    if (!Number.isFinite(parsedHot) || parsedHot <= 0 || parsedHot > 120) {
+      setMessage(t('高温阈值需在 1-120°C'));
+      return;
+    }
+    if (!Number.isFinite(parsedIdleUtil) || parsedIdleUtil < 0 || parsedIdleUtil > 100) {
+      setMessage(t('空转利用率需在 0-100%'));
+      return;
+    }
+    if (!Number.isFinite(parsedIdlePower) || parsedIdlePower < 0 || parsedIdlePower > 2000) {
+      setMessage(t('空转功率需在 0-2000W'));
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateServerConfig({
+        energy_price_per_kwh: parsedPrice,
+        energy_currency: currency.trim() || 'CNY',
+        thermal_hot_celsius: parsedHot,
+        idle_utilization_percent: parsedIdleUtil,
+        idle_power_watts: parsedIdlePower
+      });
+      setMessage(t('能耗展示参数已保存'));
+      await onDone();
+      await query.invalidateQueries({ queryKey: ['energy-summary'] });
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'energy display settings failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-energy-display">
+      <div className="operation-head">
+        <div className="operation-icon"><Power size={18} /></div>
+        <div>
+          <h2>{t('能耗展示')}</h2>
+          <p>{t('电费估算和热诊断阈值')}</p>
+        </div>
+      </div>
+      <form className="settings-form energy-settings-form" onSubmit={submit}>
+        <label>{t('电价 / kWh')}<input value={price} onChange={(event) => setPrice(event.target.value)} type="number" min={0} step="0.01" inputMode="decimal" /></label>
+        <label>{t('货币')}<input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={12} /></label>
+        <label>{t('高温阈值 °C')}<input value={hot} onChange={(event) => setHot(event.target.value)} type="number" min={1} max={120} step="1" inputMode="numeric" /></label>
+        <label>{t('空转利用率 %')}<input value={idleUtil} onChange={(event) => setIdleUtil(event.target.value)} type="number" min={0} max={100} step="1" inputMode="numeric" /></label>
+        <label>{t('空转功率 W')}<input value={idlePower} onChange={(event) => setIdlePower(event.target.value)} type="number" min={0} max={2000} step="1" inputMode="numeric" /></label>
+        <button className="primary compact" disabled={saving}>
+          <Save size={16} />
+          {saving ? t('保存中') : t('保存展示参数')}
+        </button>
       </form>
       {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
     </article>

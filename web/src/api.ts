@@ -104,6 +104,85 @@ export type GPUStats = {
   peak_power_draw_watts?: number;
 };
 
+export type EnergySettings = {
+  energy_price_per_kwh: number;
+  energy_currency: string;
+  thermal_hot_celsius: number;
+  idle_utilization_percent: number;
+  idle_power_watts: number;
+};
+
+export type EnergySummary = {
+  current_power_watts: number;
+  average_power_watts: number;
+  peak_power_watts: number;
+  energy_kwh: number;
+  estimated_cost: number;
+  currency: string;
+  hot_gpu_count: number;
+  throttled_gpu_count: number;
+  high_idle_power_gpu_count: number;
+  idle_waste_kwh: number;
+  coverage_percent: number;
+  sample_count: number;
+  power_sample_count: number;
+};
+
+export type EnergySeriesPoint = {
+  timestamp: string;
+  power_watts: number;
+  peak_temperature_celsius?: number;
+  hot_gpu_count: number;
+  gpu_sample_count: number;
+};
+
+export type EnergyGPUStat = {
+  device_id: string;
+  device_alias?: string;
+  gpu_id: string;
+  gpu_name: string;
+  sample_count: number;
+  power_sample_count: number;
+  first_sample_at?: string;
+  last_sample_at?: string;
+  current_power_watts?: number;
+  average_power_watts?: number;
+  peak_power_watts?: number;
+  peak_temperature_celsius?: number;
+  energy_kwh: number;
+  estimated_cost: number;
+  hot_sample_count: number;
+  hot_seconds: number;
+  throttled: boolean;
+  throttle_reason?: string;
+  idle_waste_kwh: number;
+  high_idle_power_seconds: number;
+  coverage_percent: number;
+};
+
+export type EnergyDiagnostic = {
+  kind: 'thermal' | 'throttle' | 'idle_waste' | string;
+  severity: 'critical' | 'warning' | 'info' | string;
+  device_id?: string;
+  device_alias?: string;
+  gpu_id?: string;
+  gpu_name?: string;
+  value?: number;
+  unit?: string;
+  reason?: string;
+};
+
+export type EnergySummaryResponse = {
+  hours: number;
+  since: string;
+  until: string;
+  config: EnergySettings;
+  summary: EnergySummary;
+  series: EnergySeriesPoint[];
+  gpus: EnergyGPUStat[];
+  diagnostics: EnergyDiagnostic[];
+};
+
 export type ServiceStatus = {
   current_addr: string;
   current_scheme: 'http' | 'https';
@@ -115,6 +194,7 @@ export type ServiceStatus = {
   update_proxy?: string;
   auto_update_enabled: boolean;
   min_free_bytes: number;
+  energy: EnergySettings;
   cert_not_after?: string;
   config_revision: number;
   updated_at?: string;
@@ -461,6 +541,10 @@ export function getStats(hours = 24) {
   return request<StatsResponse>(`/api/v1/stats/gpu-utilization?hours=${hours}`);
 }
 
+export function getEnergySummary(hours = 24) {
+  return request<EnergySummaryResponse>(`/api/v1/energy/summary?hours=${hours}`);
+}
+
 export function getGPUSeries(deviceId: string, gpuId: string, hours = 1) {
   return request<GPUSeriesPoint[]>(`/api/v1/gpus/${encodeURIComponent(gpuId)}/series?device_id=${encodeURIComponent(deviceId)}&hours=${hours}`);
 }
@@ -510,7 +594,16 @@ export function changePassword(currentPassword: string, nextPassword: string) {
   });
 }
 
-export function updateServerConfig(payload: { port?: number; min_free_mb?: number; auto_update_enabled?: boolean }) {
+export function updateServerConfig(payload: {
+  port?: number;
+  min_free_mb?: number;
+  auto_update_enabled?: boolean;
+  energy_price_per_kwh?: number;
+  energy_currency?: string;
+  thermal_hot_celsius?: number;
+  idle_utilization_percent?: number;
+  idle_power_watts?: number;
+}) {
   return request<ServiceMutationResponse>('/api/v1/admin/server-config', {
     method: 'POST',
     body: JSON.stringify(payload)
