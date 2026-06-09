@@ -246,7 +246,7 @@ cd ..
 }
 ```
 
-该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`。当前脚本还支持传入 `--expected-version v0.1.9`，用于在设置页版本信息里校验本次预期发布版本。因此验证范围包括 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、数据库和诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、访客记录弹窗、完整 Changelog 弹窗和重启确认弹窗。
+该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`。当前脚本还支持传入 `--expected-version v0.1.10`，用于在设置页版本信息里校验本次预期发布版本。因此验证范围包括 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、数据库和诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、访客记录弹窗、完整 Changelog 弹窗和重启确认弹窗。
 
 当前验证脚本输出：
 

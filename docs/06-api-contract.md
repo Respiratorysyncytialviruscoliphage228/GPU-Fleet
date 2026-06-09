@@ -251,20 +251,20 @@ GET /api/v1/version
 ```json
 {
   "product": "GPUFleet",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "commit": "dev",
   "author": "stlin256",
   "repository": "https://github.com/stlin256/GPU-Fleet",
   "changelog": [
     {
-      "version": "0.1.9",
-      "date": "2026-06-09",
-      "title": "运行诊断与长期数据查询强化",
+      "version": "0.1.10",
+      "date": "2026-06-10",
+      "title": "匿名遥测与 GPU 徽章",
       "added": [
-        "设置页新增只读诊断包下载，导出版本、运行时、磁盘、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。"
+        "服务端新增默认开启的匿名聚合遥测，每天带随机抖动上报版本、服务端平台、Agent 总数/活跃数和 GPU 总数/活跃数；本地 metadata 只保存随机安装 ID 和最近上报状态。"
       ],
       "changed": [
-        "前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。"
+        "README 顶部新增活跃 GPU 数量徽章，当前只展示 GPU 数；统计服务仍保留活跃 Server、Agent 和 GPU 聚合字段用于后续扩展。"
       ]
     }
   ]
@@ -345,9 +345,9 @@ POST /api/v1/admin/restart
   "upstream": "origin/main",
   "local_commit": "1111111111111111111111111111111111111111",
   "remote_commit": "2222222222222222222222222222222222222222",
-  "running_version": "0.1.9",
+  "running_version": "0.1.10",
   "running_commit": "1111111111111111111111111111111111111111",
-  "repo_version": "0.1.9",
+  "repo_version": "0.1.10",
   "binary_outdated": false,
   "behind": 1,
   "ahead": 0,

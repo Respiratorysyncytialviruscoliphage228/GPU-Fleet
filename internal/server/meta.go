@@ -43,6 +43,7 @@ type metadataFile struct {
 	Devices             map[string]*Device    `json:"devices"`
 	WebSessions         map[string]WebSession `json:"web_sessions,omitempty"`
 	GuestVisits         []GuestVisit          `json:"guest_visits,omitempty"`
+	Telemetry           TelemetryState        `json:"telemetry,omitempty"`
 	AuditEvents         []AuditEvent          `json:"audit_events"`
 	LastProcessSet      map[string]time.Time  `json:"last_process_set,omitempty"`
 	PendingUpdateNotice *UpdateNotice         `json:"pending_update_notice,omitempty"`
@@ -165,6 +166,14 @@ type GuestVisit struct {
 	Platform    string    `json:"platform,omitempty"`
 	Screen      string    `json:"screen,omitempty"`
 	Timezone    string    `json:"timezone,omitempty"`
+}
+
+type TelemetryState struct {
+	InstallID       string    `json:"install_id,omitempty"`
+	LastReportAt    time.Time `json:"last_report_at,omitempty"`
+	LastSuccessAt   time.Time `json:"last_success_at,omitempty"`
+	NextReportAfter time.Time `json:"next_report_after,omitempty"`
+	LastError       string    `json:"last_error,omitempty"`
 }
 
 type AuditEvent struct {
@@ -631,6 +640,46 @@ func (s *MetadataStore) GuestVisits(limit int) []GuestVisit {
 	visits := append([]GuestVisit(nil), s.data.GuestVisits[start:]...)
 	sort.Slice(visits, func(i, j int) bool { return visits[i].At.After(visits[j].At) })
 	return visits
+}
+
+func (s *MetadataStore) EnsureTelemetryInstallID() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(s.data.Telemetry.InstallID) != "" {
+		return s.data.Telemetry.InstallID, nil
+	}
+	installID, err := randomHex(24)
+	if err != nil {
+		return "", err
+	}
+	s.data.Telemetry.InstallID = installID
+	return installID, s.saveLocked()
+}
+
+func (s *MetadataStore) TelemetryState() TelemetryState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data.Telemetry
+}
+
+func (s *MetadataStore) RecordTelemetrySuccess(at, nextReportAfter time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	at = at.UTC()
+	s.data.Telemetry.LastReportAt = at
+	s.data.Telemetry.LastSuccessAt = at
+	s.data.Telemetry.NextReportAfter = nextReportAfter.UTC()
+	s.data.Telemetry.LastError = ""
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) RecordTelemetryError(at, nextReportAfter time.Time, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Telemetry.LastReportAt = at.UTC()
+	s.data.Telemetry.NextReportAfter = nextReportAfter.UTC()
+	s.data.Telemetry.LastError = limitText(strings.TrimSpace(message), 240)
+	return s.saveLocked()
 }
 
 func (s *MetadataStore) RecentAuditEvents(limit int) []AuditEvent {

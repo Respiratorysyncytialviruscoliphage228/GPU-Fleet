@@ -4,6 +4,7 @@
 </h1>
 
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/)
+[![Active GPUs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgpufleet-telemetry.stlin256.workers.dev%2Fbadge)](https://gpufleet-telemetry.stlin256.workers.dev/summary)
 
 GPUFleet is an operations dashboard for NVIDIA GPU machines spread across different networks. It lets a public server collect read-only reports from Windows/Linux Agents, then shows which GPUs are online, how busy they are, how utilization, memory, temperature, and power changed over time, which devices went offline, and which processes are currently using GPU memory.
 
@@ -13,7 +14,7 @@ Chinese documentation: [README.md](README.md)
 
 Installation guide: [docs/14-installation.md](docs/14-installation.md)
 
-Current version: `0.1.9`<br>
+Current version: `0.1.10`<br>
 Author: `stlin256`<br>
 Repository: `https://github.com/stlin256/GPU-Fleet`
 
@@ -27,10 +28,11 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 - Diagnostics and recovery: authenticated database download, read-only diagnostics package, Linux backup/restore scripts, automatic update source checks, remote build before fast-forward pull, binary replacement, and restart recovery.
 - Guest access: optional `/guest` overview with sanitized device and GPU data. Guests cannot see processes, stats, real device IDs, hostnames, Agent metadata, driver versions, GPU UUIDs, VBIOS, or admin APIs.
 - Lightweight deployment: the default stack is one Go server, one Go Agent, React static files, gzip JSONL metric segments, and JSON metadata. Prometheus, Grafana, and external databases are not required.
+- Ecosystem signal: anonymous aggregate telemetry is enabled by default and only reports deployment version, server platform, active Agent count, and active GPU count for the README GPU badge. It never uploads hostnames, device IDs, GPU UUIDs, processes, usernames, secrets, or server URLs.
 
 ## Current Status
 
-GPUFleet is currently at `0.1.9`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
+GPUFleet is currently at `0.1.10`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, anonymous aggregate telemetry, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 
@@ -92,6 +94,8 @@ Online update operates only on the server Git checkout configured by `-repo-dir`
 After an automatic update completes, the next admin visit shows a completion dialog with update time and notes. If the version did not change, the dialog shows only new or changed `CHANGELOG.md` lines since the previous checkout; if the changelog is identical, it shows “No update notes.”
 
 Settings also provides diagnostics package download and a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
+
+Anonymous aggregate telemetry is enabled by default. The server reports once per day with jitter to `https://gpufleet-telemetry.stlin256.workers.dev/v1/report`, sending only the version, server OS/architecture, total and active Agent counts, and total and active GPU counts. Disable it with `-disable-telemetry` or `GPUFLEET_DISABLE_TELEMETRY=true`; use `-telemetry-url` or `GPUFLEET_TELEMETRY_URL` to point at a self-hosted collector.
 
 ## Documentation
 

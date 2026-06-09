@@ -1,0 +1,11 @@
+name = "gpufleet-telemetry"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+account_id = "3c4ca6657b57bd72ce62e0518e8aeb95"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gpufleet_telemetry"
+database_id = "e517ac16-4908-445a-8eba-6f749d0a073a"
+

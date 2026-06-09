@@ -118,6 +118,8 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 
 设置页还提供磁盘预留空间、能耗展示参数、自动更新开关、手动重启服务和访客功能开关。磁盘预留空间保存后立即影响服务端写入保护；能耗展示参数只影响 kWh、电费估算、热诊断和空转高耗诊断的展示口径；自动更新默认开启并每 30 分钟检查一次上游；手动重启会调度当前服务端进程重启，Web 面板全屏等待恢复并提示重启成功；访客功能开启后登录页显示访客入口，关闭后访客总览和访客曲线接口都会返回 `403`。
 
+匿名聚合遥测默认开启。服务端每天带随机抖动向默认统计端点上报一次，只包含版本、服务端 OS/架构、Agent 总数/活跃数和 GPU 总数/活跃数；不会上传主机名、真实设备 ID、GPU UUID、进程、用户名、密钥、访问地址或远端 IP。使用 `-disable-telemetry` 或 `GPUFLEET_DISABLE_TELEMETRY=true` 可关闭，使用 `-telemetry-url` 或 `GPUFLEET_TELEMETRY_URL` 可改为自托管统计端点。
+
 ## 服务端在线更新
 
 设置页的“在线更新”用于检查、构建、拉取并自动重启服务端自身 Git 仓库更新。自动更新默认开启，每 30 分钟检查一次 upstream；发现可 fast-forward 更新时会自动构建、拉取并重启。服务端必须从 Git checkout 启动，并且当前分支需要配置 upstream，例如 `main` 跟踪 `origin/main`。

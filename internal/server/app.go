@@ -38,6 +38,9 @@ type Config struct {
 	WebDir                 string
 	RepoDir                string
 	DisableUpdateMonitor   bool
+	DisableTelemetry       bool
+	TelemetryEndpoint      string
+	TelemetryInterval      time.Duration
 	AgentUpdateManifestURL string
 	AgentUpdatePublicKey   string
 }
@@ -88,6 +91,12 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 	if config.WebDir == "" {
 		config.WebDir = "web/dist"
+	}
+	if config.TelemetryEndpoint == "" {
+		config.TelemetryEndpoint = defaultTelemetryEndpoint
+	}
+	if config.TelemetryInterval == 0 {
+		config.TelemetryInterval = telemetryDefaultInterval
 	}
 	if config.RepoDir == "" {
 		if wd, err := os.Getwd(); err == nil {
@@ -164,6 +173,9 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 	if !config.DisableUpdateMonitor {
 		app.startUpdateMonitorLoop()
+	}
+	if !config.DisableTelemetry && config.TelemetryEndpoint != "" {
+		app.startTelemetryLoop()
 	}
 	return app, generatedPassword, nil
 }

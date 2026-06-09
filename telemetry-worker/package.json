@@ -1,0 +1,13 @@
+{
+  "name": "gpufleet-telemetry-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 execute gpufleet_telemetry --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260601.0",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -257,6 +257,88 @@ func TestAutoUpdateConfigDefaultsOnAndCanBeDisabled(t *testing.T) {
 	}
 }
 
+func TestTelemetryReportUsesAnonymousAggregates(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	if err := app.meta.UpdateHeartbeat("local-dev", func(device *Device) {
+		device.Hostname = "private-host"
+		device.OS = "linux"
+		device.GPUCount = 3
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disabled, _, err := app.meta.CreateDevice("disabled-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.UpdateHeartbeat(disabled.ID, func(device *Device) {
+		device.Hostname = "disabled-private-host"
+		device.OS = "windows"
+		device.GPUCount = 8
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.meta.SetDeviceEnabled(disabled.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := app.buildTelemetryReport(time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.InstallIDHash == "" || strings.Contains(report.InstallIDHash, app.meta.TelemetryState().InstallID) {
+		t.Fatalf("expected hashed install id, got %+v", report)
+	}
+	if report.ClientsTotal != 2 || report.ClientsActive7 != 1 || report.GPUsTotal != 11 || report.GPUsActive7 != 3 {
+		t.Fatalf("unexpected telemetry counts: %+v", report)
+	}
+	raw, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sensitive := range []string{"local-dev", disabled.ID, "private-host", "disabled-private-host"} {
+		if strings.Contains(string(raw), sensitive) {
+			t.Fatalf("telemetry report leaked %q: %s", sensitive, raw)
+		}
+	}
+}
+
+func TestTelemetryRunSubmitsAndRecordsState(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.config.TelemetryInterval = time.Hour
+	var received telemetryReport
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if !strings.HasPrefix(r.UserAgent(), "GPUFleet/") {
+			t.Fatalf("unexpected user agent %q", r.UserAgent())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer endpoint.Close()
+	app.config.TelemetryEndpoint = endpoint.URL
+
+	now := time.Now().UTC()
+	if !app.runTelemetryIfDue(now) {
+		t.Fatal("expected telemetry run to submit report")
+	}
+	state := app.meta.TelemetryState()
+	if state.LastSuccessAt.IsZero() || state.NextReportAfter.IsZero() || state.LastError != "" {
+		t.Fatalf("expected successful telemetry state, got %+v", state)
+	}
+	if received.SchemaVersion != 1 || received.InstallIDHash == "" || received.Version != version.Version {
+		t.Fatalf("unexpected received telemetry report: %+v", received)
+	}
+	if app.runTelemetryIfDue(now.Add(time.Minute)) {
+		t.Fatal("expected second telemetry run to wait until next report window")
+	}
+}
+
 func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
 	beforeRaw := `## [0.1.7] - 2026-06-08
 
@@ -1769,6 +1851,7 @@ func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 		MinFreeBytes:         1,
 		Retention:            time.Hour,
 		DisableUpdateMonitor: true,
+		DisableTelemetry:     true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1822,6 +1905,7 @@ func TestServerDoesNotCreateBootstrapDeviceByDefault(t *testing.T) {
 		Retention:            time.Hour,
 		AdminPassword:        "admin-test",
 		DisableUpdateMonitor: true,
+		DisableTelemetry:     true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -2277,6 +2361,7 @@ func newTestAppWithRepo(t *testing.T, root, webDir, repoDir string) *App {
 		BootstrapDeviceID:    "local-dev",
 		BootstrapSecret:      "local-dev-secret",
 		DisableUpdateMonitor: true,
+		DisableTelemetry:     true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

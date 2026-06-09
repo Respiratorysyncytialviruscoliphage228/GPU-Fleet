@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "0.1.9"
+	Version   = "0.1.10"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,28 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.10",
+			Date:    "2026-06-10",
+			Title:   "匿名遥测与 GPU 徽章",
+			TitleEN: "Anonymous telemetry and GPU badge",
+			Added: []string{
+				"服务端新增默认开启的匿名聚合遥测，每天带随机抖动上报版本、服务端平台、Agent 总数/活跃数和 GPU 总数/活跃数；本地 metadata 只保存随机安装 ID 和最近上报状态。",
+				"新增 Cloudflare Worker + D1 统计服务源码、数据库 schema 和 REST API 部署脚本，提供 `/v1/report` 上报入口、`/summary` 聚合摘要和 Shields.io 兼容 `/badge` 输出。",
+				"README 顶部新增活跃 GPU 数量徽章，当前只展示 GPU 数；统计服务仍保留活跃 Server、Agent 和 GPU 聚合字段用于后续扩展。",
+			},
+			AddedEN: []string{
+				"The server now includes anonymous aggregate telemetry enabled by default, reporting version, server platform, total/active Agent counts, and total/active GPU counts once per day with jitter; local metadata stores only a random install ID and recent report state.",
+				"Added Cloudflare Worker + D1 telemetry service source, database schema, and a REST API deployment script with `/v1/report`, `/summary`, and a Shields.io-compatible `/badge` endpoint.",
+				"The README now shows an active GPU count badge at the top. The badge displays only GPU count today while the telemetry service keeps active Server, Agent, and GPU aggregates for future expansion.",
+			},
+			Security: []string{
+				"匿名遥测不上传主机名、真实设备 ID、GPU UUID、进程、用户名、密钥、访问地址或远端 IP；可用 `-disable-telemetry` 或 `GPUFLEET_DISABLE_TELEMETRY=true` 关闭，也可通过 `-telemetry-url` 指向自托管统计端点。",
+			},
+			SecurityEN: []string{
+				"Anonymous telemetry does not upload hostnames, real device IDs, GPU UUIDs, processes, usernames, secrets, server URLs, or remote IPs. It can be disabled with `-disable-telemetry` or `GPUFLEET_DISABLE_TELEMETRY=true`, or pointed at a self-hosted collector with `-telemetry-url`.",
+			},
+		},
 		{
 			Version: "0.1.9",
 			Date:    "2026-06-09",
