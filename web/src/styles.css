@@ -2652,6 +2652,67 @@ input:focus {
   overflow-wrap: anywhere;
 }
 
+.agent-update-summary {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--panel-soft);
+}
+
+.agent-update-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.agent-update-summary strong {
+  display: block;
+  margin-top: 5px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.advanced-settings {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-soft) 72%, var(--panel));
+  overflow: hidden;
+}
+
+.advanced-settings summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 9px 10px;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-weight: 800;
+  list-style-position: inside;
+}
+
+.advanced-settings[open] {
+  padding-bottom: 10px;
+}
+
+.advanced-settings[open] summary {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.advanced-settings > label,
+.advanced-settings > .settings-form-grid {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.advanced-settings > label + label,
+.advanced-settings > .settings-form-grid + label {
+  margin-top: 10px;
+}
+
 .update-progress-backdrop {
   z-index: 86;
 }

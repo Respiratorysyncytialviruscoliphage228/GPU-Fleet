@@ -27,17 +27,19 @@ import (
 )
 
 type Config struct {
-	Addr                 string
-	AddrExplicit         bool
-	DataDir              string
-	MinFreeBytes         uint64
-	Retention            time.Duration
-	BootstrapDeviceID    string
-	BootstrapSecret      string
-	AdminPassword        string
-	WebDir               string
-	RepoDir              string
-	DisableUpdateMonitor bool
+	Addr                   string
+	AddrExplicit           bool
+	DataDir                string
+	MinFreeBytes           uint64
+	Retention              time.Duration
+	BootstrapDeviceID      string
+	BootstrapSecret        string
+	AdminPassword          string
+	WebDir                 string
+	RepoDir                string
+	DisableUpdateMonitor   bool
+	AgentUpdateManifestURL string
+	AgentUpdatePublicKey   string
 }
 
 type App struct {
@@ -546,7 +548,7 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.AgentUpdate != nil {
-		config, err = a.meta.UpdateAgentUpdatePolicy(*body.AgentUpdate)
+		config, err = a.meta.UpdateAgentUpdatePolicy(a.withAgentUpdateDefaults(*body.AgentUpdate))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -580,6 +582,28 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		"service":          a.serviceStatusFromConfig(config, r),
 		"restart_required": a.restartRequired(config),
 	})
+}
+
+func (a *App) withAgentUpdateDefaults(policy model.AgentUpdatePolicy) model.AgentUpdatePolicy {
+	if !policy.Enabled {
+		return policy
+	}
+	current := a.meta.ServiceConfig().AgentUpdate
+	if strings.TrimSpace(policy.ManifestURL) == "" {
+		if strings.TrimSpace(current.ManifestURL) != "" {
+			policy.ManifestURL = current.ManifestURL
+		} else {
+			policy.ManifestURL = a.config.AgentUpdateManifestURL
+		}
+	}
+	if strings.TrimSpace(policy.PublicKey) == "" {
+		if strings.TrimSpace(current.PublicKey) != "" {
+			policy.PublicKey = current.PublicKey
+		} else {
+			policy.PublicKey = a.config.AgentUpdatePublicKey
+		}
+	}
+	return policy
 }
 
 func (a *App) handleAdminLanguage(w http.ResponseWriter, r *http.Request) {
@@ -1719,12 +1743,177 @@ func (a *App) handleAgentUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	policy := a.meta.ServiceConfig().AgentUpdate
+	policy := a.agentUpdatePolicyForDevice(deviceID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"device_id":   deviceID,
 		"policy":      policy,
 		"server_time": time.Now().UTC(),
 	})
+}
+
+func (a *App) agentUpdatePolicyForDevice(deviceID string) model.AgentUpdatePolicy {
+	config := a.meta.ServiceConfig()
+	policy := config.AgentUpdate
+	if !policy.Enabled || policy.Rollout != "canary" {
+		return policy
+	}
+	maxParallel := policy.MaxParallel
+	if maxParallel <= 0 {
+		maxParallel = 1
+	}
+	active := 0
+	scouts := 0
+	devices := a.meta.ListDevices()
+	sort.Slice(devices, func(i, j int) bool {
+		left := devices[i].Alias
+		if left == "" {
+			left = devices[i].ID
+		}
+		right := devices[j].Alias
+		if right == "" {
+			right = devices[j].ID
+		}
+		if left == right {
+			return devices[i].ID < devices[j].ID
+		}
+		return left < right
+	})
+	rolloutTarget := agentUpdateRolloutTarget(devices, policy, config.UpdatedAt)
+	for _, device := range devices {
+		if !device.Enabled {
+			continue
+		}
+		isScout := false
+		if policy.DesiredVersion == "" && scouts < maxParallel {
+			isScout = true
+			scouts++
+		}
+		if agentUpdateCompleted(device.UpdateState, policy, config.UpdatedAt, rolloutTarget) {
+			if device.ID == deviceID {
+				if isScout {
+					return policy
+				}
+				policy.Enabled = false
+				return policy
+			}
+			continue
+		}
+		if active < maxParallel {
+			if device.ID == deviceID {
+				return policy
+			}
+			active++
+			continue
+		}
+		if device.ID == deviceID {
+			policy.Enabled = false
+			return policy
+		}
+	}
+	policy.Enabled = false
+	return policy
+}
+
+func agentUpdateRolloutTarget(devices []Device, policy model.AgentUpdatePolicy, policyUpdatedAt time.Time) string {
+	if policy.DesiredVersion != "" {
+		return strings.TrimPrefix(policy.DesiredVersion, "v")
+	}
+	target := ""
+	for _, device := range devices {
+		state := device.UpdateState
+		if state == nil || !agentUpdateTerminalState(*state) {
+			continue
+		}
+		if !policyUpdatedAt.IsZero() && state.UpdatedAt.Before(policyUpdatedAt) {
+			continue
+		}
+		if policy.ManifestURL != "" && state.ManifestURL != "" && state.ManifestURL != redactURLCredentials(policy.ManifestURL) {
+			continue
+		}
+		candidate := strings.TrimPrefix(strings.TrimSpace(state.TargetVersion), "v")
+		if candidate == "" {
+			continue
+		}
+		if state.Status == "skipped" && strings.TrimPrefix(state.CurrentVersion, "v") != candidate {
+			continue
+		}
+		if target == "" || compareAgentUpdateVersions(candidate, target) > 0 {
+			target = candidate
+		}
+	}
+	return target
+}
+
+func agentUpdateCompleted(state *model.AgentUpdateState, policy model.AgentUpdatePolicy, policyUpdatedAt time.Time, rolloutTarget string) bool {
+	if state == nil {
+		return false
+	}
+	if !policyUpdatedAt.IsZero() && state.UpdatedAt.Before(policyUpdatedAt) {
+		return false
+	}
+	if !agentUpdateTerminalState(*state) {
+		return false
+	}
+	if state.Status == "skipped" {
+		if state.TargetVersion == "" || strings.TrimPrefix(state.CurrentVersion, "v") != strings.TrimPrefix(state.TargetVersion, "v") {
+			return false
+		}
+	}
+	target := strings.TrimPrefix(policy.DesiredVersion, "v")
+	if target == "" {
+		target = rolloutTarget
+	}
+	if target != "" && strings.TrimPrefix(state.TargetVersion, "v") != target {
+		return false
+	}
+	if policy.ManifestURL != "" && state.ManifestURL != "" && state.ManifestURL != redactURLCredentials(policy.ManifestURL) {
+		return false
+	}
+	return true
+}
+
+func agentUpdateTerminalState(state model.AgentUpdateState) bool {
+	return state.Status == "applied" || state.Status == "available" || state.Status == "skipped"
+}
+
+func compareAgentUpdateVersions(left, right string) int {
+	leftParts, leftOK := parseAgentUpdateVersion(left)
+	rightParts, rightOK := parseAgentUpdateVersion(right)
+	if leftOK && rightOK {
+		for index := range leftParts {
+			if leftParts[index] > rightParts[index] {
+				return 1
+			}
+			if leftParts[index] < rightParts[index] {
+				return -1
+			}
+		}
+		return 0
+	}
+	return strings.Compare(strings.TrimPrefix(left, "v"), strings.TrimPrefix(right, "v"))
+}
+
+func parseAgentUpdateVersion(raw string) ([3]int, bool) {
+	var out [3]int
+	raw = strings.TrimSpace(strings.TrimPrefix(raw, "v"))
+	if raw == "" {
+		return out, false
+	}
+	if index := strings.IndexAny(raw, "-+"); index >= 0 {
+		raw = raw[:index]
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) < 2 || len(parts) > 3 {
+		return out, false
+	}
+	for index, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil {
+			return out, false
+		}
+		out[index] = value
+	}
+	return out, true
 }
 
 func (a *App) handleAgentUpdateEvents(w http.ResponseWriter, r *http.Request) {

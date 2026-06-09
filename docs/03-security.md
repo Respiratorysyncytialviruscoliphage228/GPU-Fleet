@@ -96,7 +96,7 @@ Web 侧使用本地管理员密码登录：
 
 能耗与热状态页面同样属于展示面。电价、高温阈值、空转利用率阈值和空转功率阈值只影响服务端派生 kWh、电费估算和诊断标签，不会写入 Agent 配置，也不会修改 GPU 功耗墙、风扇、频率、任务或进程。
 
-Agent 更新策略同样保持 pull 模型。设置页保存目标版本、签名 manifest URL、Ed25519 公钥和灰度参数；Agent 用 HMAC 拉取策略后自行下载 manifest 和 artifact。服务端不会向 Agent 下发 shell 命令，Agent 必须先验证 manifest 签名和 artifact sha256，才允许替换自己的二进制。
+Agent 更新策略同样保持 pull 模型。设置页默认只呈现自动更新开关、更新范围摘要和保存按钮；签名 manifest URL 与 Ed25519 公钥可由部署环境通过环境变量或启动参数预置，目标版本、更新模式、检查间隔和灰度参数收在高级设置中。目标版本留空时表示按更新模式选择允许的最新补丁或小版本。Agent 用 HMAC 拉取策略后自行下载 manifest 和 artifact。服务端不会向 Agent 下发 shell 命令，Agent 必须先验证 manifest 签名和 artifact sha256，才允许替换自己的二进制。
 
 ### 访客访问
 

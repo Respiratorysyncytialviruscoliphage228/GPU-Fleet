@@ -24,6 +24,8 @@ func main() {
 	flag.StringVar(&cfg.AdminPassword, "admin-password", env("GPUFLEET_ADMIN_PASSWORD", ""), "initial admin password")
 	flag.StringVar(&cfg.WebDir, "web-dir", env("GPUFLEET_WEB_DIR", "web/dist"), "web dashboard build directory")
 	flag.StringVar(&cfg.RepoDir, "repo-dir", env("GPUFLEET_REPO_DIR", "."), "Git repository directory for server self-update checks")
+	flag.StringVar(&cfg.AgentUpdateManifestURL, "agent-update-manifest-url", env("GPUFLEET_AGENT_UPDATE_MANIFEST_URL", ""), "default signed Agent update manifest URL")
+	flag.StringVar(&cfg.AgentUpdatePublicKey, "agent-update-public-key", env("GPUFLEET_AGENT_UPDATE_PUBLIC_KEY", ""), "default Ed25519 public key for Agent update manifests")
 	flag.IntVar(&minFreeMB, "min-free-mb", envInt("GPUFLEET_MIN_FREE_MB", 800), "minimum free disk space before rejecting metrics")
 	flag.IntVar(&retentionDays, "retention-days", envInt("GPUFLEET_RETENTION_DAYS", 30), "compressed metric retention days")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")

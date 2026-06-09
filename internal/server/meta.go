@@ -522,7 +522,11 @@ func (s *MetadataStore) UpdateAgentUpdatePolicy(policy model.AgentUpdatePolicy) 
 	s.data.Service.AgentUpdate = normalized
 	s.bumpServiceConfigLocked()
 	if normalized.Enabled {
-		s.addAuditLocked("agent_update_policy_enabled", fmt.Sprintf("enabled Agent update policy for %s", normalized.DesiredVersion))
+		target := normalized.DesiredVersion
+		if target == "" {
+			target = normalized.Mode
+		}
+		s.addAuditLocked("agent_update_policy_enabled", fmt.Sprintf("enabled Agent update policy for %s", target))
 	} else {
 		s.addAuditLocked("agent_update_policy_disabled", "disabled Agent update policy")
 	}
@@ -1260,9 +1264,6 @@ func normalizeAgentUpdatePolicy(policy model.AgentUpdatePolicy) (model.AgentUpda
 	policy.MaintenanceWindow = strings.TrimSpace(policy.MaintenanceWindow)
 	if !policy.Enabled {
 		return policy, nil
-	}
-	if policy.DesiredVersion == "" {
-		return model.AgentUpdatePolicy{}, errors.New("agent update desired version is required when enabled")
 	}
 	if len(policy.DesiredVersion) > 80 {
 		return model.AgentUpdatePolicy{}, errors.New("agent update desired version is too long")

@@ -121,7 +121,7 @@ const dashboardHTML = `<!doctype html>
       color: var(--muted);
       margin-top: 14px;
     }
-    input {
+    input, select, textarea {
       min-height: 42px;
       padding: 10px 12px;
       border-radius: 8px;
@@ -129,6 +129,7 @@ const dashboardHTML = `<!doctype html>
       background: var(--panel);
       color: var(--text);
     }
+    textarea { resize: vertical; }
     .primary, .secondary, .icon-button, nav button {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -949,6 +950,56 @@ const dashboardHTML = `<!doctype html>
       white-space: normal;
     }
     .security-switch-row .inline-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 999px; line-height: 1; }
+    .agent-update-summary {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--panel-soft);
+    }
+    .agent-update-summary span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .agent-update-summary strong {
+      display: block;
+      margin-top: 5px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .advanced-settings {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      overflow: hidden;
+    }
+    .advanced-settings summary {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 9px 10px;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font-weight: 800;
+      list-style-position: inside;
+    }
+    .advanced-settings[open] {
+      padding-bottom: 10px;
+    }
+    .advanced-settings[open] summary {
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 10px;
+    }
+    .advanced-settings > label {
+      margin-left: 10px;
+      margin-right: 10px;
+    }
+    .advanced-settings > label + label {
+      margin-top: 10px;
+    }
     .update-note {
       margin-top: -4px;
     }
@@ -1796,6 +1847,7 @@ const dashboardHTML = `<!doctype html>
               operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
               operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
               operationPanel('旧版 Agent 兼容', '控制是否接受 0.1.9 前的 HMAC 签名', 'SEC', legacyAgentAuthControl(service), 'settings-legacy-agent-auth') +
+              operationPanel('Agent 自动更新', 'Agent 拉取签名更新并替换自身', 'AU', agentUpdateControl(service), 'settings-agent-update') +
               operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
@@ -1852,6 +1904,78 @@ const dashboardHTML = `<!doctype html>
         }
       } finally {
         if (input) input.disabled = false;
+      }
+    }
+    function selected(value, expected) {
+      return String(value || '') === expected ? ' selected' : '';
+    }
+    function agentUpdateScope(policy) {
+      if ((policy.rollout || 'canary') === 'canary') {
+        const count = Number(policy.max_parallel || 1);
+        return '先更新 ' + (count > 1 ? count : 1) + ' 台，成功后继续';
+      }
+      return '所有 Agent 按检查周期拉取';
+    }
+    function agentUpdateControl(service) {
+      const policy = Object.assign({enabled: false, mode: 'patch', desired_version: '', manifest_url: '', public_key: '', check_interval_seconds: 1800, rollout: 'canary', max_parallel: 1}, (service && service.agent_update) || {});
+      const help = '启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。';
+      return '<form class="settings-form agent-update-form" onsubmit="saveAgentUpdate(event)">' +
+        '<label class="switch-row security-switch-row"><input name="enabled" id="agentUpdateSwitch" type="checkbox" ' + (policy.enabled ? 'checked' : '') + '><span id="agentUpdateSwitchLabel">' + (policy.enabled ? 'Agent 自更新已开启' : 'Agent 自更新已关闭') + '</span><button class="icon-button inline-help" type="button" onclick="alert(' + "'" + escJS(help) + "'" + ')" title="' + esc(help) + '">?</button></label>' +
+        '<div class="agent-update-summary"><span>更新范围</span><strong>' + esc(agentUpdateScope(policy)) + '</strong></div>' +
+        '<button class="secondary action-button" type="submit">保存策略</button>' +
+        '<details class="advanced-settings agent-update-advanced"><summary>高级设置</summary>' +
+          '<label>指定目标版本<input name="desired_version" value="' + esc(policy.desired_version || '') + '" placeholder="留空表示最新补丁"></label>' +
+          '<label>更新模式<select name="mode"><option value="notify"' + selected(policy.mode, 'notify') + '>仅通知</option><option value="patch"' + selected(policy.mode || 'patch', 'patch') + '>补丁版本</option><option value="minor"' + selected(policy.mode, 'minor') + '>小版本</option></select></label>' +
+          '<label>检查间隔秒<input name="check_interval_seconds" type="number" min="300" step="60" value="' + esc(policy.check_interval_seconds || 1800) + '"></label>' +
+          '<label>并发上限<input name="max_parallel" type="number" min="1" max="64" value="' + esc(policy.max_parallel || 1) + '"></label>' +
+          '<label>更新范围<select name="rollout"><option value="canary"' + selected(policy.rollout || 'canary', 'canary') + '>先更新一批，成功后继续</option><option value="all"' + selected(policy.rollout, 'all') + '>全部 Agent 自行拉取</option></select></label>' +
+          '<label>Manifest URL<input name="manifest_url" value="' + esc(policy.manifest_url || '') + '" placeholder="https://example.com/gpufleet-agent-manifest.json"></label>' +
+          '<label>Ed25519 公钥<textarea name="public_key" rows="3" placeholder="base64-encoded public key">' + esc(policy.public_key || '') + '</textarea></label>' +
+        '</details>' +
+        '<p class="update-note" id="agentUpdateMessage"></p>' +
+      '</form>';
+    }
+    async function saveAgentUpdate(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const message = document.getElementById('agentUpdateMessage');
+      const enabledInput = form.querySelector('[name="enabled"]');
+      const value = (name) => {
+        const input = form.querySelector('[name="' + name + '"]');
+        return input && input.value ? input.value.trim() : '';
+      };
+      const numberValue = (name, fallback) => {
+        const parsed = Number(value(name) || fallback);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      if (message) message.textContent = '';
+      try {
+        const result = await api('/api/v1/admin/server-config', {method: 'POST', body: JSON.stringify({agent_update: {
+          enabled: !!(enabledInput && enabledInput.checked),
+          mode: value('mode') || 'patch',
+          desired_version: value('desired_version'),
+          manifest_url: value('manifest_url'),
+          public_key: value('public_key'),
+          check_interval_seconds: numberValue('check_interval_seconds', 1800),
+          rollout: value('rollout') || 'canary',
+          max_parallel: numberValue('max_parallel', 1),
+          maintenance_window: ''
+        }})});
+        if (state.data && result.service) state.data.service = result.service;
+        const label = document.getElementById('agentUpdateSwitchLabel');
+        const enabled = !!(result.service && result.service.agent_update && result.service.agent_update.enabled);
+        if (enabledInput) enabledInput.checked = enabled;
+        if (label) label.textContent = enabled ? 'Agent 自更新已开启' : 'Agent 自更新已关闭';
+        if (message) {
+          message.className = 'notice update-note';
+          message.textContent = enabled ? 'Agent 自动更新已保存' : 'Agent 自动更新已关闭';
+        }
+      } catch (err) {
+        const detail = err && err.message ? err.message : String(err);
+        if (message) {
+          message.className = 'error update-note';
+          message.textContent = /manifest URL|public key/i.test(detail) ? '需要先配置签名更新源：请在高级设置填写 Manifest URL 和 Ed25519 公钥，或由部署环境预置默认更新源。' : detail;
+        }
       }
     }
     function updatePanel() {

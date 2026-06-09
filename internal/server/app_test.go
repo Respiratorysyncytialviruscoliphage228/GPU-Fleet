@@ -972,9 +972,10 @@ func TestEnergySummaryAPIIntegratesPowerAndDiagnostics(t *testing.T) {
 	handler := app.Handler()
 	cookie := loginCookie(t, handler)
 
-	var configResponse struct {
+	type configResponseBody struct {
 		Service serviceStatus `json:"service"`
 	}
+	var configResponse configResponseBody
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{
 		"energy_price_per_kwh":     0.75,
 		"energy_currency":          "usd",
@@ -1363,8 +1364,13 @@ func TestAgentConfigReportStoredAndAudited(t *testing.T) {
 func TestAgentUpdatePolicyAndEvents(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.config.AgentUpdateManifestURL = "https://defaults.example.com/gpufleet-agent.json"
+	app.config.AgentUpdatePublicKey = "default-public-key"
 	handler := app.Handler()
 	cookie := loginCookie(t, handler)
+	if _, err := app.meta.SetDeviceEnabled("local-dev", false); err != nil {
+		t.Fatal(err)
+	}
 
 	policy := model.AgentUpdatePolicy{
 		Enabled:              true,
@@ -1376,14 +1382,41 @@ func TestAgentUpdatePolicyAndEvents(t *testing.T) {
 		Rollout:              "all",
 		MaxParallel:          2,
 	}
-	var configResponse struct {
+	type configResponseBody struct {
 		Service serviceStatus `json:"service"`
 	}
+	var configResponse configResponseBody
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": policy}, cookie, http.StatusOK, &configResponse)
 	if !configResponse.Service.AgentUpdate.Enabled || configResponse.Service.AgentUpdate.DesiredVersion != "0.1.10" {
 		t.Fatalf("unexpected agent update policy in service status: %+v", configResponse.Service.AgentUpdate)
 	}
 	assertAuditType(t, app, "agent_update_policy_enabled")
+
+	configResponse = configResponseBody{}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		ManifestURL:          "https://updates.example.com/gpufleet-agent.json",
+		PublicKey:            "base64-public-key",
+		CheckIntervalSeconds: 600,
+		Rollout:              "all",
+		MaxParallel:          1,
+	}}, cookie, http.StatusOK, &configResponse)
+	if !configResponse.Service.AgentUpdate.Enabled || configResponse.Service.AgentUpdate.DesiredVersion != "" {
+		t.Fatalf("expected blank desired version to mean latest allowed patch, got %+v", configResponse.Service.AgentUpdate)
+	}
+
+	configResponse = configResponseBody{}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		CheckIntervalSeconds: 600,
+		Rollout:              "canary",
+		MaxParallel:          1,
+	}}, cookie, http.StatusOK, &configResponse)
+	if configResponse.Service.AgentUpdate.ManifestURL != policy.ManifestURL || configResponse.Service.AgentUpdate.PublicKey != policy.PublicKey {
+		t.Fatalf("expected existing Agent update source to be reused, got %+v", configResponse.Service.AgentUpdate)
+	}
 
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
 		Enabled:        true,
@@ -1393,7 +1426,26 @@ func TestAgentUpdatePolicyAndEvents(t *testing.T) {
 		PublicKey:      "base64-public-key",
 	}}, cookie, http.StatusBadRequest, nil)
 
+	canaryPolicy := model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		ManifestURL:          policy.ManifestURL,
+		PublicKey:            policy.PublicKey,
+		CheckIntervalSeconds: 600,
+		Rollout:              "canary",
+		MaxParallel:          1,
+	}
+	configResponse = configResponseBody{}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": canaryPolicy}, cookie, http.StatusOK, &configResponse)
+	if configResponse.Service.AgentUpdate.DesiredVersion != "" || configResponse.Service.AgentUpdate.Rollout != "canary" {
+		t.Fatalf("expected blank-target canary policy, got %+v", configResponse.Service.AgentUpdate)
+	}
+
 	device, secret, err := app.meta.CreateDevice("updating-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondSecret, err := app.meta.CreateDevice("zzz-updating-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1413,15 +1465,33 @@ func TestAgentUpdatePolicyAndEvents(t *testing.T) {
 	if err := json.Unmarshal(policyRec.Body.Bytes(), &policyResult); err != nil {
 		t.Fatal(err)
 	}
-	if !policyResult.Policy.Enabled || policyResult.Policy.ManifestURL != policy.ManifestURL {
+	if !policyResult.Policy.Enabled || policyResult.Policy.ManifestURL != canaryPolicy.ManifestURL || policyResult.Policy.DesiredVersion != "" {
 		t.Fatalf("unexpected policy response: %+v", policyResult.Policy)
+	}
+	secondPolicyReq := httptest.NewRequest(http.MethodPost, "/api/v1/agent/update-policy", bytes.NewReader(policyBody))
+	if err := auth.AttachSignedHeaders(secondPolicyReq, policyBody, second.ID, secondSecret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	secondPolicyRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondPolicyRec, secondPolicyReq)
+	if secondPolicyRec.Code != http.StatusOK {
+		t.Fatalf("expected second policy request ok, got %d with body %q", secondPolicyRec.Code, secondPolicyRec.Body.String())
+	}
+	var secondPolicyResult struct {
+		Policy model.AgentUpdatePolicy `json:"policy"`
+	}
+	if err := json.Unmarshal(secondPolicyRec.Body.Bytes(), &secondPolicyResult); err != nil {
+		t.Fatal(err)
+	}
+	if secondPolicyResult.Policy.Enabled {
+		t.Fatalf("expected second canary Agent to wait while first is active, got %+v", secondPolicyResult.Policy)
 	}
 
 	event := model.AgentUpdateEvent{
-		Status:         "staged",
+		Status:         "applied",
 		CurrentVersion: model.AgentVersion,
 		TargetVersion:  "0.1.10",
-		ManifestURL:    policy.ManifestURL,
+		ManifestURL:    canaryPolicy.ManifestURL,
 		ArtifactSHA256: strings.Repeat("a", 64),
 		Message:        "downloaded and verified",
 	}
@@ -1445,10 +1515,65 @@ func TestAgentUpdatePolicyAndEvents(t *testing.T) {
 			break
 		}
 	}
-	if stored == nil || stored.Status != "staged" || stored.TargetVersion != "0.1.10" {
+	if stored == nil || stored.Status != "applied" || stored.TargetVersion != "0.1.10" {
 		t.Fatalf("expected update state to be stored, got %+v", stored)
 	}
 	assertAuditType(t, app, "agent_update_event")
+
+	policyReq = httptest.NewRequest(http.MethodPost, "/api/v1/agent/update-policy", bytes.NewReader(policyBody))
+	if err := auth.AttachSignedHeaders(policyReq, policyBody, device.ID, secret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	policyRec = httptest.NewRecorder()
+	handler.ServeHTTP(policyRec, policyReq)
+	if policyRec.Code != http.StatusOK {
+		t.Fatalf("expected scout policy request after canary success ok, got %d with body %q", policyRec.Code, policyRec.Body.String())
+	}
+	if err := json.Unmarshal(policyRec.Body.Bytes(), &policyResult); err != nil {
+		t.Fatal(err)
+	}
+	if !policyResult.Policy.Enabled {
+		t.Fatalf("expected first blank-target canary Agent to remain a scout for later patch releases, got %+v", policyResult.Policy)
+	}
+
+	secondPolicyReq = httptest.NewRequest(http.MethodPost, "/api/v1/agent/update-policy", bytes.NewReader(policyBody))
+	if err := auth.AttachSignedHeaders(secondPolicyReq, policyBody, second.ID, secondSecret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	secondPolicyRec = httptest.NewRecorder()
+	handler.ServeHTTP(secondPolicyRec, secondPolicyReq)
+	if secondPolicyRec.Code != http.StatusOK {
+		t.Fatalf("expected second policy request after canary success ok, got %d with body %q", secondPolicyRec.Code, secondPolicyRec.Body.String())
+	}
+	if err := json.Unmarshal(secondPolicyRec.Body.Bytes(), &secondPolicyResult); err != nil {
+		t.Fatal(err)
+	}
+	if !secondPolicyResult.Policy.Enabled {
+		t.Fatalf("expected second canary Agent to proceed after first applied update, got %+v", secondPolicyResult.Policy)
+	}
+}
+
+func TestAgentUpdatePolicyUsesConfiguredDefaultSource(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.config.AgentUpdateManifestURL = "https://defaults.example.com/gpufleet-agent.json"
+	app.config.AgentUpdatePublicKey = "default-public-key"
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var configResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		CheckIntervalSeconds: 600,
+		Rollout:              "canary",
+		MaxParallel:          1,
+	}}, cookie, http.StatusOK, &configResponse)
+	if configResponse.Service.AgentUpdate.ManifestURL != app.config.AgentUpdateManifestURL || configResponse.Service.AgentUpdate.PublicKey != app.config.AgentUpdatePublicKey {
+		t.Fatalf("expected configured default Agent update source to be applied, got %+v", configResponse.Service.AgentUpdate)
+	}
 }
 
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {

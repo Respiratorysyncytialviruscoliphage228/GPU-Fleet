@@ -2740,6 +2740,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <LanguageSettings service={service} onDone={refreshOverview} />
           <CertificateSettings service={service} onDone={refreshOverview} />
           <LegacyAgentAuthSettings service={service} onDone={refreshFleetAfterAgentAuthChange} />
+          <AgentUpdateSettings service={service} onDone={refreshOverview} />
           <article className="panel setting-operation">
             <div className="operation-head">
               <div className="operation-icon"><Settings size={18} /></div>
@@ -2769,7 +2770,6 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <DiskReserveSettings data={data} onDone={refreshOverview} />
           <EnergyDisplaySettings service={service} onDone={refreshOverview} />
           <UpdateSettings service={service} onDone={refreshOverview} />
-          <AgentUpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
       </section>
@@ -3106,7 +3106,7 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
     manifest_url: '',
     public_key: '',
     check_interval_seconds: 1800,
-    rollout: 'all',
+    rollout: 'canary',
     max_parallel: 1,
     maintenance_window: ''
   };
@@ -3136,24 +3136,28 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
         check_interval_seconds: Number(policy.check_interval_seconds || 1800),
         max_parallel: Number(policy.max_parallel || 1)
       } });
-      setMessage(policy.enabled ? 'Agent 更新策略已保存' : 'Agent 更新策略已关闭');
+      setMessage(policy.enabled ? 'Agent 自动更新已保存' : 'Agent 自动更新已关闭');
       await onDone();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'agent update policy save failed');
+      const detail = err instanceof Error ? err.message : 'agent update policy save failed';
+      setMessage(/manifest URL|public key/i.test(detail) ? '需要先配置签名更新源：请在高级设置填写 Manifest URL 和 Ed25519 公钥，或由部署环境预置默认更新源。' : detail);
     } finally {
       setSaving(false);
     }
   }
 
-  const help = '服务端只保存期望版本、manifest 地址、公钥和灰度策略；Agent 使用 HMAC 拉取策略后，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。';
+  const scopeText = (policy.rollout || 'canary') === 'canary'
+    ? (policy.max_parallel && policy.max_parallel > 1 ? `先更新 ${policy.max_parallel} 台，成功后继续` : '先更新 1 台，成功后继续')
+    : '所有 Agent 按检查周期拉取';
+  const help = '启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。';
 
   return (
     <article className="panel setting-operation agent-update-card" data-testid="settings-agent-update">
       <div className="operation-head">
         <div className="operation-icon"><MonitorUp size={18} /></div>
         <div>
-          <h2>Agent 更新策略</h2>
-          <p>客户端拉取签名 manifest 后自更新</p>
+          <h2>Agent 自动更新</h2>
+          <p>Agent 拉取签名更新并替换自身</p>
         </div>
       </div>
       <form className="settings-form agent-update-form" onSubmit={save}>
@@ -3168,43 +3172,57 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
             <CircleHelp size={14} />
           </button>
         </label>
-        <div className="settings-form-grid">
-          <label>
-            目标版本
-            <input value={policy.desired_version || ''} onChange={(event) => patchPolicy({ desired_version: event.target.value })} placeholder="0.1.10" />
-          </label>
-          <label>
-            更新模式
-            <select value={policy.mode || 'patch'} onChange={(event) => patchPolicy({ mode: event.target.value })}>
-              <option value="notify">仅通知</option>
-              <option value="patch">补丁版本</option>
-              <option value="minor">小版本</option>
-            </select>
-          </label>
-          <label>
-            检查间隔秒
-            <input type="number" min={300} step={60} value={policy.check_interval_seconds || 1800} onChange={(event) => patchPolicy({ check_interval_seconds: Number(event.target.value) })} />
-          </label>
-          <label>
-            并发上限
-            <input type="number" min={1} max={64} value={policy.max_parallel || 1} onChange={(event) => patchPolicy({ max_parallel: Number(event.target.value) })} />
-          </label>
+        <div className="agent-update-summary">
+          <span>更新范围</span>
+          <strong>{scopeText}</strong>
         </div>
-        <label>
-          Manifest URL
-          <input value={policy.manifest_url || ''} onChange={(event) => patchPolicy({ manifest_url: event.target.value })} placeholder="https://example.com/gpufleet-agent-manifest.json" />
-        </label>
-        <label>
-          Ed25519 公钥
-          <textarea value={policy.public_key || ''} onChange={(event) => patchPolicy({ public_key: event.target.value })} placeholder="base64-encoded public key" rows={3} />
-        </label>
         <button className="secondary action-button" type="submit" disabled={saving}>
           <Save size={16} />
           {saving ? '保存中' : '保存策略'}
         </button>
+        <details className="advanced-settings agent-update-advanced">
+          <summary>高级设置</summary>
+          <div className="settings-form-grid">
+            <label>
+              指定目标版本
+              <input value={policy.desired_version || ''} onChange={(event) => patchPolicy({ desired_version: event.target.value })} placeholder="留空表示最新补丁" />
+            </label>
+            <label>
+              更新模式
+              <select value={policy.mode || 'patch'} onChange={(event) => patchPolicy({ mode: event.target.value })}>
+                <option value="notify">仅通知</option>
+                <option value="patch">补丁版本</option>
+                <option value="minor">小版本</option>
+              </select>
+            </label>
+            <label>
+              检查间隔秒
+              <input type="number" min={300} step={60} value={policy.check_interval_seconds || 1800} onChange={(event) => patchPolicy({ check_interval_seconds: Number(event.target.value) })} />
+            </label>
+            <label>
+              并发上限
+              <input type="number" min={1} max={64} value={policy.max_parallel || 1} onChange={(event) => patchPolicy({ max_parallel: Number(event.target.value) })} />
+            </label>
+            <label>
+              更新范围
+              <select value={policy.rollout || 'canary'} onChange={(event) => patchPolicy({ rollout: event.target.value })}>
+                <option value="canary">先更新一批，成功后继续</option>
+                <option value="all">全部 Agent 自行拉取</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Manifest URL
+            <input value={policy.manifest_url || ''} onChange={(event) => patchPolicy({ manifest_url: event.target.value })} placeholder="https://example.com/gpufleet-agent-manifest.json" />
+          </label>
+          <label>
+            Ed25519 公钥
+            <textarea value={policy.public_key || ''} onChange={(event) => patchPolicy({ public_key: event.target.value })} placeholder="base64-encoded public key" rows={3} />
+          </label>
+        </details>
       </form>
       {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
-      {helpOpen && <InfoDialog title="Agent 更新策略" body={help} onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <InfoDialog title="Agent 自动更新" body={help} onClose={() => setHelpOpen(false)} />}
     </article>
   );
 }

@@ -66,7 +66,7 @@ Agent 批量上报 JSON：
 
 ## 更新策略
 
-Agent 更新采用 pull 模型。设置页只保存目标版本、签名 manifest URL、Ed25519 公钥、检查间隔和并发上限；Agent 使用 HMAC 从 `/api/v1/agent/update-policy` 拉取策略，并把检查、跳过、成功、失败或回滚事件上报到 `/api/v1/agent/update-events`。
+Agent 更新采用 pull 模型。设置页默认只呈现 Agent 自动更新开关、更新范围摘要和保存按钮；服务端可通过 `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`、`GPUFLEET_AGENT_UPDATE_PUBLIC_KEY` 或同名启动参数预置签名更新源，目标版本、更新模式、签名源、检查间隔和并发上限收在高级设置中。目标版本留空时表示按更新模式选择允许的最新补丁或小版本。Agent 使用 HMAC 从 `/api/v1/agent/update-policy` 拉取策略，并把检查、跳过、成功、失败或回滚事件上报到 `/api/v1/agent/update-events`。
 
 服务端不会下发 shell 命令，也不会 SSH/RDP 到设备。Agent 只允许在签名 manifest 和 artifact sha256 都校验通过后替换自己的二进制。
 

@@ -40,6 +40,12 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Online update flow now audits manual requests and dirty/no-upstream/ahead/check-failure blocking paths, with tests covering request, scheduled restart, and blocked events.
 - zh-CN: 前端新增“能耗”导航页，展示当前功率、范围耗电、电费估算、热状态趋势、GPU 能耗排行和结构化诊断，并在设置页提供仅影响展示估算的电价与阈值配置。
 - en-US: Added an Energy navigation page showing current power, range energy, cost estimates, thermal trends, per-GPU energy ranking, and structured diagnostics, plus display-only price and threshold settings.
+- zh-CN: Agent 更新卡片移到设置页左列并改为默认简化视图，普通界面只保留启用开关、更新范围摘要和保存按钮；目标版本、更新模式、检查间隔、并发上限、manifest URL 与 Ed25519 公钥收进“高级设置”。
+- en-US: The Agent update card moved to the left Settings column and now defaults to a simplified view with only the enable switch, update-scope summary, and save button; target version, mode, interval, max parallelism, manifest URL, and Ed25519 public key now live under Advanced settings.
+- zh-CN: Agent 更新策略允许启用时不填写目标版本，空目标版本表示按当前更新模式选择允许的最新补丁或小版本。
+- en-US: Agent update policies can now be enabled without a target version; a blank target means the Agent follows the selected mode for the latest allowed patch or minor update.
+- zh-CN: 服务端支持通过环境变量或启动参数预置默认签名 Agent 更新源；空目标版本的灰度更新会保留首批 Agent 作为后续补丁探测节点，避免首轮完成后停止检查。
+- en-US: The server can now prefill the default signed Agent update source from environment variables or flags; blank-target canary rollouts keep the first Agent batch as scouts for later patch releases so checks do not stop after the first wave.
 
 ### Security / 安全
 
