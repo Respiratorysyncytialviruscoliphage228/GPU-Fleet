@@ -230,6 +230,12 @@ func Changelog() []ChangelogEntry {
 				"The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.",
 				"Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.",
 			},
+			Fixed: []string{
+				"修复 GPU 卡片 tag 区域在 PCIe 降级文案较长时出现横向滚动条的问题，标签改为固定网格并保留完整 hover 提示。",
+			},
+			FixedEN: []string{
+				"Fixed GPU card tag rows showing a horizontal scrollbar when PCIe degradation labels were long; tags now use a fixed grid while preserving the full hover tooltip.",
+			},
 		},
 		{
 			Version: "0.1.7",

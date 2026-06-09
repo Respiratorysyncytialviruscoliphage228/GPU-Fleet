@@ -1073,7 +1073,7 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
       </div>
 
       <div className="gpu-card-meta">
-        <span className={isPCIeDegraded(item) ? 'warn' : ''}>{pcieLabel(item)}</span>
+        <span className={isPCIeDegraded(item) ? 'warn' : ''} title={pcieTitle(item)}>{pcieLabel(item)}</span>
         <span className={hasClockThrottle(item) ? 'warn' : ''}>{hasClockThrottle(item) ? 'Throttle' : gpu.pstate || '-'}</span>
         <span>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</span>
       </div>
@@ -1472,10 +1472,24 @@ function deviceBorderColor(deviceID: string) {
 }
 
 function pcieLabel(item: StoredGPU) {
+  const currentGen = item.gpu.pcie_link_generation ? `Gen ${item.gpu.pcie_link_generation}` : '';
+  const currentWidth = item.gpu.pcie_link_width ? `x${item.gpu.pcie_link_width}` : '';
+  const maxGen = item.gpu.pcie_link_generation_max ? `Gen ${item.gpu.pcie_link_generation_max}` : '';
+  const maxWidth = item.gpu.pcie_link_width_max ? `x${item.gpu.pcie_link_width_max}` : '';
+  if (isPCIeDegraded(item)) {
+    const gen = currentGen && maxGen && currentGen !== maxGen ? `${currentGen}/${maxGen.replace(/^Gen\s+/, '')}` : currentGen || maxGen;
+    const width = currentWidth && maxWidth && currentWidth !== maxWidth ? `${currentWidth}/${maxWidth.replace(/^x/, '')}` : currentWidth || maxWidth;
+    return [gen, width].filter(Boolean).join(' ') || 'PCIe';
+  }
+  const current = [currentGen, currentWidth].filter(Boolean).join(' ');
+  return current ? `PCIe ${current}` : 'PCIe -';
+}
+
+function pcieTitle(item: StoredGPU) {
   const current = [item.gpu.pcie_link_generation ? `Gen ${item.gpu.pcie_link_generation}` : '', item.gpu.pcie_link_width ? `x${item.gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
   const max = [item.gpu.pcie_link_generation_max ? `Gen ${item.gpu.pcie_link_generation_max}` : '', item.gpu.pcie_link_width_max ? `x${item.gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
-  if (current && max && isPCIeDegraded(item)) return `PCIe ${current} / ${max}`;
-  return current ? `PCIe ${current}` : 'PCIe -';
+  if (current && max && isPCIeDegraded(item)) return `PCIe ${current} / Max ${max}`;
+  return current ? `PCIe ${current}` : 'PCIe';
 }
 
 function isPCIeDegraded(item: StoredGPU) {

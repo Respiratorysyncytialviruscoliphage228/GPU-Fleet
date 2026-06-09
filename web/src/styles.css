@@ -561,18 +561,14 @@ input:focus-visible {
 .status-dot.offline { background: var(--offline); box-shadow: 0 0 0 4px var(--offline-soft); }
 
 .gpu-card-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
+  min-width: 0;
 }
 
 .gpu-card-meta span {
-  flex: 0 0 auto;
-  min-width: 88px;
-  max-width: 168px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
@@ -587,8 +583,8 @@ input:focus-visible {
 }
 
 .gpu-card-meta span:last-child {
-  min-width: max-content;
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .gpu-card-meta span.warn {

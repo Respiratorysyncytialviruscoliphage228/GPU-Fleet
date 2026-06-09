@@ -28,6 +28,11 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。
 - en-US: Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.
 
+### Fixed / 修复
+
+- zh-CN: 修复 GPU 卡片 tag 区域在 PCIe 降级文案较长时出现横向滚动条的问题，标签改为固定网格并保留完整 hover 提示。
+- en-US: Fixed GPU card tag rows showing a horizontal scrollbar when PCIe degradation labels were long; tags now use a fixed grid while preserving the full hover tooltip.
+
 ## [0.1.7] - 2026-06-08
 
 ### Title / 标题
