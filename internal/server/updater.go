@@ -94,6 +94,10 @@ type updateApplyResponse struct {
 	RestartAt        time.Time              `json:"restart_at,omitempty"`
 }
 
+type updateApplyRequest struct {
+	ForceClean bool `json:"force_clean"`
+}
+
 type updateBuildRequest struct {
 	RepoDir      string
 	RemoteCommit string
@@ -145,11 +149,18 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	var req updateApplyRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := decodeJSON(r, &req, 1<<20); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	a.updateMu.Lock()
 	defer a.updateMu.Unlock()
 
 	_ = a.addAuditForRequest(r, "server_update_requested", "manual server update requested from settings", "")
-	response, statusCode, message := a.applyUpdateLocked(r.Context(), false)
+	response, statusCode, message := a.applyUpdateLocked(r.Context(), false, req.ForceClean)
 	if statusCode >= http.StatusBadRequest {
 		writeError(w, statusCode, message)
 		return
@@ -186,15 +197,15 @@ func (a *App) startUpdateMonitorLoop() {
 	}()
 }
 
-func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateApplyResponse, int, string) {
+func (a *App) applyUpdateLocked(ctx context.Context, automatic bool, forceClean bool) (updateApplyResponse, int, string) {
 	startedAt := time.Now().UTC()
 	checkCtx, checkCancel := context.WithTimeout(ctx, updateCheckTimeout)
 	status := a.checkUpdateStatusLocked(checkCtx)
 	checkCancel()
-	return a.applyUpdateLockedWithStatus(ctx, automatic, status, startedAt)
+	return a.applyUpdateLockedWithStatus(ctx, automatic, status, startedAt, forceClean)
 }
 
-func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, status updateStatus, startedAt time.Time) (updateApplyResponse, int, string) {
+func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, status updateStatus, startedAt time.Time, forceClean bool) (updateApplyResponse, int, string) {
 	if !status.Supported {
 		return updateApplyResponse{}, http.StatusBadRequest, status.Message
 	}
@@ -204,9 +215,25 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		return updateApplyResponse{}, http.StatusBadRequest, message
 	}
 	if status.Dirty {
-		message := "server working tree has uncommitted changes"
-		_ = a.meta.AddAudit("server_update_blocked", message)
-		return updateApplyResponse{}, http.StatusConflict, message
+		if automatic || !forceClean {
+			message := "server working tree has uncommitted changes"
+			_ = a.meta.AddAudit("server_update_blocked", message)
+			return updateApplyResponse{}, http.StatusConflict, message
+		}
+		if err := a.stashDirtyWorktree(ctx, startedAt); err != nil {
+			message := "stash dirty working tree before update failed: " + limitText(err.Error(), 300)
+			_ = a.meta.AddAudit("server_update_failed", message)
+			return updateApplyResponse{}, http.StatusInternalServerError, message
+		}
+		_ = a.meta.AddAudit("server_update_worktree_stashed", "manual update stashed dirty worktree before applying update")
+		checkCtx, checkCancel := context.WithTimeout(ctx, updateCheckTimeout)
+		status = a.checkUpdateStatusLocked(checkCtx)
+		checkCancel()
+		if status.Dirty {
+			message := "server working tree is still dirty after stash"
+			_ = a.meta.AddAudit("server_update_blocked", message)
+			return updateApplyResponse{}, http.StatusConflict, message
+		}
 	}
 	if status.Ahead > 0 {
 		message := "local branch is ahead of upstream; fast-forward update is not available"
@@ -368,7 +395,7 @@ func (a *App) runUpdateMonitorCycle() bool {
 		}
 		return false
 	}
-	response, statusCode, message := a.applyUpdateLockedWithStatus(context.Background(), true, status, time.Now().UTC())
+	response, statusCode, message := a.applyUpdateLockedWithStatus(context.Background(), true, status, time.Now().UTC(), false)
 	if statusCode >= http.StatusBadRequest {
 		if a.logger != nil {
 			a.logger.Printf("auto update skipped: %s", message)
@@ -798,6 +825,19 @@ func automaticUpdateRecentlyCompletedForTarget(notice *UpdateNotice, status upda
 func (a *App) workingTreeDirty(ctx context.Context) bool {
 	out, err := a.runGit(ctx, "status", "--porcelain")
 	return err == nil && strings.TrimSpace(out) != ""
+}
+
+func (a *App) stashDirtyWorktree(ctx context.Context, startedAt time.Time) error {
+	labelTime := startedAt.UTC().Format("20060102-150405")
+	message := "gpufleet-update-force-" + labelTime
+	out, err := a.runGit(ctx, "-c", "user.name=GPUFleet Update", "-c", "user.email=gpufleet-update@localhost", "stash", "push", "-u", "-m", message)
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(out+err.Error()))
+	}
+	if strings.Contains(strings.ToLower(out), "no local changes") {
+		return nil
+	}
+	return nil
 }
 
 func (a *App) repoDir() (string, error) {

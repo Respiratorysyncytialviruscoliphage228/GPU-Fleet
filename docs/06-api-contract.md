@@ -305,13 +305,13 @@ POST /api/v1/admin/restart
 - `GET /admin/diagnostics/download`：下载只读诊断 ZIP，包含 `diagnostics.json`，汇总版本、运行时、磁盘、指标分段、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
 - `POST /admin/update/proxy`：保存或清空在线更新代理地址，仅接受 `http` 或 `https` 代理；诊断包中会脱敏代理凭据。
-- `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。
+- `POST /admin/update/apply`：默认仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。手动请求可传入 `{"force_clean": true}`，服务端会先执行 `git stash push -u` 保存当前工作区，再继续检查和更新；自动更新不会使用该参数。
 - `GET /admin/update/notice`：返回并清除一条自动更新完成通知。通知包含更新时间、提交、版本和中英文更新内容；同版本更新只返回新旧 changelog 顶部同版本条目中新增或变化的行。
 - `POST /admin/guest`：开启或关闭访客入口和访客总览。
 - `GET /admin/guest/visits`：返回最近 100 次访客总览访问记录，包含远端地址、User-Agent、语言、平台、屏幕、时区和浏览器指纹摘要。
 - `POST /admin/restart`：手动调度服务端重启。页面会全屏等待服务恢复，恢复后刷新并显示完成提示。
 
-在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。自动更新默认开启，每 30 分钟执行同一套服务端检查和应用逻辑；旧 metadata 没有 `auto_update_enabled` 字段时按开启处理。
+在线更新接口只接受固定路径，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。自动更新默认开启，每 30 分钟执行同一套服务端检查和应用逻辑；旧 metadata 没有 `auto_update_enabled` 字段时按开启处理。
 
 `POST /admin/server-config` 可额外接收以下能耗展示字段，这些字段只影响 Web 展示、估算和诊断口径，不会下发到 Agent，也不会修改 GPU 功耗、风扇或频率：
 

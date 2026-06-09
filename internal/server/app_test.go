@@ -442,6 +442,19 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusConflict, nil)
 	assertAuditType(t, app, "server_update_blocked")
+
+	var forced updateApplyResponse
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", map[string]bool{"force_clean": true}, cookie, http.StatusOK, &forced)
+	if !forced.OK || forced.RestartRequired {
+		t.Fatalf("expected forced clean update to stash dirty worktree and find no pending update, got %+v", forced)
+	}
+	if out := git(t, local, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Fatalf("expected force clean to leave worktree clean, got %q", out)
+	}
+	if out := git(t, local, "stash", "list"); !strings.Contains(out, "gpufleet-update-force-") {
+		t.Fatalf("expected force clean to create a recoverable stash, got %q", out)
+	}
+	assertAuditType(t, app, "server_update_worktree_stashed")
 }
 
 func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
@@ -580,7 +593,7 @@ func TestUpdateSupplyChainStatusBlocksUntrustedNetworkRemote(t *testing.T) {
 		t.Fatalf("expected untrusted network remote to be blocked, got %+v", status.SupplyChain)
 	}
 	app := newTestApp(t, t.TempDir(), filepath.Join(t.TempDir(), "missing-web"))
-	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC())
+	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC(), false)
 	if code != http.StatusPreconditionFailed || !strings.Contains(message, "supply-chain") {
 		t.Fatalf("expected supply-chain precondition failure, got code=%d message=%q", code, message)
 	}
@@ -599,7 +612,7 @@ func TestUpdateSupplyChainStatusRequiresExactTargetCommit(t *testing.T) {
 		t.Fatalf("expected non-exact update target to be blocked, got %+v", status.SupplyChain)
 	}
 	app := newTestApp(t, t.TempDir(), filepath.Join(t.TempDir(), "missing-web"))
-	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC())
+	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC(), false)
 	if code != http.StatusPreconditionFailed || !strings.Contains(message, "commit") {
 		t.Fatalf("expected exact-target precondition failure, got code=%d message=%q", code, message)
 	}

@@ -757,25 +757,26 @@ input:focus-visible {
 }
 
 .spark-area {
-  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
   transition: fill var(--motion-base) var(--ease);
 }
 
 .spark-line {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 3;
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 360;
-  animation: spark-draw 920ms var(--ease) 120ms both;
+  vector-effect: non-scaling-stroke;
+  animation: spark-fade-in 360ms var(--ease) 80ms both;
 }
 
 .spark-cursor {
-  stroke: var(--text);
-  stroke-width: 1.2;
-  stroke-dasharray: 4 3;
-  opacity: .58;
+  stroke: color-mix(in srgb, var(--text) 46%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: .42;
+  vector-effect: non-scaling-stroke;
 }
 
 .spark-point {
@@ -2824,6 +2825,11 @@ input[type="file"] {
 @keyframes spark-draw {
   from { stroke-dashoffset: 360; }
   to { stroke-dashoffset: 0; }
+}
+
+@keyframes spark-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes scanline-boot {

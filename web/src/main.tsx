@@ -1741,7 +1741,7 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
     const y = height - pad - (Math.max(0, Math.min(cappedMax, sample.value)) / cappedMax) * (height - pad * 2);
     return { ...sample, x, y };
   });
-  const line = smoothSparklinePath(pointData);
+  const line = sparklineLinePath(pointData);
   const area = sparklineAreaPath(pointData, height - pad);
   const active = hoverIndex !== null ? pointData[hoverIndex] : undefined;
 
@@ -1829,22 +1829,20 @@ function prepareSparklineSamples(samples: Array<{ value: number; timestamp?: str
     .map(([, bucket]) => ({ value: bucket.value / bucket.count, timestamp: bucket.timestamp }));
 }
 
-function smoothSparklinePath(points: Array<{ x: number; y: number }>) {
+function sparklineLinePath(points: Array<{ x: number; y: number }>) {
   if (!points.length) return '';
   if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
   const parts = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
   for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
     const current = points[index];
-    const midX = (previous.x + current.x) / 2;
-    parts.push(`C ${midX.toFixed(1)} ${previous.y.toFixed(1)}, ${midX.toFixed(1)} ${current.y.toFixed(1)}, ${current.x.toFixed(1)} ${current.y.toFixed(1)}`);
+    parts.push(`L ${current.x.toFixed(1)} ${current.y.toFixed(1)}`);
   }
   return parts.join(' ');
 }
 
 function sparklineAreaPath(points: Array<{ x: number; y: number }>, baseline: number) {
   if (points.length < 2) return '';
-  return `${smoothSparklinePath(points)} L ${points[points.length - 1].x.toFixed(1)} ${baseline.toFixed(1)} L ${points[0].x.toFixed(1)} ${baseline.toFixed(1)} Z`;
+  return `${sparklineLinePath(points)} L ${points[points.length - 1].x.toFixed(1)} ${baseline.toFixed(1)} L ${points[0].x.toFixed(1)} ${baseline.toFixed(1)} Z`;
 }
 
 function deviceBorderColor(deviceID: string) {
@@ -2812,7 +2810,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const state = waitingForRestart
     ? { label: t('重启中'), tone: 'warn' as const, message: t('服务端正在自动重启，恢复后页面会自动刷新。') }
     : updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
-  const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && status.ahead === 0 && !status.supply_chain?.blocked && status.supply_chain?.exact_target_commit !== false && !busy);
+  const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && status.ahead === 0 && !status.supply_chain?.blocked && status.supply_chain?.exact_target_commit !== false && !busy);
 
   useEffect(() => {
     setProxyURL(service?.update_proxy || '');
@@ -2884,7 +2882,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     setProgressStep(1);
     const timer = window.setTimeout(() => setProgressStep(2), 1200);
     try {
-      const result = await applyUpdate();
+      const result = await applyUpdate(Boolean(status?.dirty));
       window.clearTimeout(timer);
       setProgressStep(3);
       if (result.restarting) {
@@ -3074,6 +3072,7 @@ function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () =
 }
 
 function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: UpdateStatus; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const dirty = Boolean(status?.dirty);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel();
@@ -3090,8 +3089,8 @@ function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: U
         <div className="confirm-icon"><Download size={22} /></div>
         <div className="confirm-copy">
           <span>在线更新</span>
-          <h2 id="update-confirm-title">确认更新服务端？</h2>
-          <p>服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。</p>
+          <h2 id="update-confirm-title">{dirty ? '工作区不干净，是否强制更新？' : '确认更新服务端？'}</h2>
+          <p>{dirty ? '服务端会先用 git stash push -u 保存当前工作区改动，再检查依赖、构建远端提交、执行 fast-forward 拉取并自动重启。' : '服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。'}</p>
         </div>
         <div className="confirm-target update-notice-grid">
           <div><span>当前提交</span><strong>{shortHash(status?.local_commit)}</strong></div>
@@ -3103,7 +3102,7 @@ function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: U
           <button className="secondary" type="button" onClick={onCancel} disabled={busy}>取消</button>
           <button className="primary compact" type="button" onClick={onConfirm} disabled={busy}>
             <Download size={16} />
-            {busy ? '更新中' : '确认更新'}
+            {busy ? '更新中' : dirty ? '暂存并更新' : '确认更新'}
           </button>
         </div>
       </section>
@@ -3157,7 +3156,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (!status.supported) return { label: '不可用', tone: 'bad', message: status.message || '服务端未运行在 Git 工作区' };
   if (status.failed) return { label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败' };
   if (status.supply_chain?.blocked) return { label: '来源异常', tone: 'bad', message: status.message || status.supply_chain.warnings?.join('；') || '自动更新来源校验未通过' };
-  if (status.dirty) return { label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取' };
+  if (status.dirty) return { label: '需确认', tone: 'warn', message: '服务端工作区存在未提交改动；自动拉取已阻止，手动更新可先暂存改动后继续' };
   if (!status.upstream) return { label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream' };
   if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };
   if (status.ahead > 0) return { label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取' };

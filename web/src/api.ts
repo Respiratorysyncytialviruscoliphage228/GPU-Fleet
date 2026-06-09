@@ -527,9 +527,10 @@ export function getUpdateStatus(fresh = false) {
   return request<UpdateStatus>(fresh ? '/api/v1/admin/update/status?fresh=1' : '/api/v1/admin/update/status?cached=1');
 }
 
-export function applyUpdate() {
+export function applyUpdate(forceClean = false) {
   return request<UpdateApplyResponse>('/api/v1/admin/update/apply', {
-    method: 'POST'
+    method: 'POST',
+    body: JSON.stringify({ force_clean: forceClean })
   });
 }
 

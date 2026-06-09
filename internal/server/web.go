@@ -1846,7 +1846,9 @@ const dashboardHTML = `<!doctype html>
       }
     }
     async function applyUpdate() {
-      if (!window.confirm('确认更新服务端？服务端会构建、拉取并自动重启。')) return;
+      const forceClean = !!(state.updateStatus && state.updateStatus.dirty);
+      const confirmText = forceClean ? '服务端工作区存在未提交改动。是否先用 git stash push -u 保存改动，然后继续更新并重启？' : '确认更新服务端？服务端会构建、拉取并自动重启。';
+      if (!window.confirm(confirmText)) return;
       const button = document.getElementById('updateApplyButton');
       const message = document.getElementById('updateMessage');
       if (button) button.disabled = true;
@@ -1854,7 +1856,7 @@ const dashboardHTML = `<!doctype html>
       renderUpdateProgress(1);
       const timer = setTimeout(() => renderUpdateProgress(2), 1200);
       try {
-        const result = await api('/api/v1/admin/update/apply', {method: 'POST'});
+        const result = await api('/api/v1/admin/update/apply', {method: 'POST', body: JSON.stringify({force_clean: forceClean})});
         clearTimeout(timer);
         if (result.status) storeCachedUpdateStatus(result.status);
         renderUpdateStatus(result.status || {});
@@ -1897,6 +1899,7 @@ const dashboardHTML = `<!doctype html>
       const messageRow = document.getElementById('updateMessageRow');
       const detailButton = document.getElementById('updateDetailButton');
       const button = document.getElementById('updateApplyButton');
+      state.updateStatus = status;
       state.updateDetail = status.detail || '';
       if (stateNode) {
         stateNode.className = 'pill ' + viewState.tone;
@@ -1908,7 +1911,7 @@ const dashboardHTML = `<!doctype html>
       if (messageRow) messageRow.className = 'update-note-row update-note ' + (viewState.tone === 'bad' ? 'error' : 'notice');
       if (detailButton) detailButton.classList.toggle('hidden', !state.updateDetail);
       if (button) {
-        button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && !status.ahead && !(status.supply_chain && status.supply_chain.blocked) && !(status.supply_chain && status.supply_chain.exact_target_commit === false));
+        button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.ahead && !(status.supply_chain && status.supply_chain.blocked) && !(status.supply_chain && status.supply_chain.exact_target_commit === false));
         button.textContent = '更新';
       }
     }
@@ -1937,7 +1940,7 @@ const dashboardHTML = `<!doctype html>
       if (!status || !status.supported) return {label: '不可用', tone: 'bad', message: (status && status.message) || '服务端未运行在 Git 工作区'};
       if (status.failed) return {label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败'};
       if (status.supply_chain && status.supply_chain.blocked) return {label: '来源异常', tone: 'bad', message: status.message || (status.supply_chain.warnings || []).join('；') || '自动更新来源校验未通过'};
-      if (status.dirty) return {label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取'};
+      if (status.dirty) return {label: '需确认', tone: 'warn', message: '服务端工作区存在未提交改动；自动拉取已阻止，手动更新可先暂存改动后继续'};
       if (!status.upstream) return {label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream'};
       if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};
       if (status.ahead > 0) return {label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取'};
