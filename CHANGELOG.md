@@ -25,6 +25,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Stats panels now include filters, sorting, and summary cards for analyzing GPUs by average/peak utilization, idle rate, peak memory, peak temperature, peak power, and sample count.
 - zh-CN: 前端补齐服务端已返回的统计字段，显示采样覆盖范围、平均显存和峰值利用率，减少只看瞬时快照造成的误判。
 - en-US: The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.
+- zh-CN: 版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。
+- en-US: Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.
 
 ## [0.1.7] - 2026-06-08
 

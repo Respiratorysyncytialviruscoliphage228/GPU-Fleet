@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "0.1.7"
+	Version   = "0.1.8"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,30 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.8",
+			Date:    "2026-06-09",
+			Title:   "数据洞察与监控呈现增强",
+			TitleEN: "Data insight and monitoring presentation improvements",
+			Changed: []string{
+				"总览高温 GPU 统计统一使用服务端 85°C 高温口径，避免和卡片健康状态出现不一致。",
+				"利用率分布图按利用率排序，并在横轴和悬浮提示中显示设备名称与 GPU ID，避免多设备 `gpu0` 标签混淆。",
+				"总览巡检摘要新增 PCIe 降级和时钟限速 GPU 计数，并在 GPU 卡片元信息中突出这些需要关注的硬件状态。",
+				"统计面板新增 1H、6H、24H、7D 和 30D 时间范围切换，展开曲线会按所选范围加载。",
+				"统计面板新增筛选、排序和摘要卡片，可按平均/峰值利用率、空闲率、峰值显存、峰值温度、峰值功耗和样本数分析 GPU。",
+				"前端补齐服务端已返回的统计字段，显示采样覆盖范围、平均显存和峰值利用率，减少只看瞬时快照造成的误判。",
+				"版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。",
+			},
+			ChangedEN: []string{
+				"Overview hot-GPU counts now use the same server-side 85°C threshold as card health state to avoid inconsistent totals.",
+				"Utilization distribution charts are sorted by utilization and label each bar with the device name plus GPU ID, avoiding ambiguous multi-device `gpu0` labels.",
+				"Overview inspection facts now include PCIe-degraded and clock-throttled GPU counts, and GPU cards highlight those hardware states in their metadata.",
+				"Stats panels now support 1H, 6H, 24H, 7D, and 30D range switching, and expanded charts load the selected range.",
+				"Stats panels now include filters, sorting, and summary cards for analyzing GPUs by average/peak utilization, idle rate, peak memory, peak temperature, peak power, and sample count.",
+				"The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.",
+				"Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.",
+			},
+		},
 		{
 			Version: "0.1.7",
 			Date:    "2026-06-08",
