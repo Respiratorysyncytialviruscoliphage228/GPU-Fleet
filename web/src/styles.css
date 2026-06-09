@@ -702,6 +702,8 @@ input:focus-visible {
   width: 100%;
   height: 74px;
   align-self: end;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .sparkline {

@@ -40,6 +40,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed post-update recovery waiting taking much longer because it repeatedly ran fresh Git checks; recovery detection now uses a lightweight version check.
 - zh-CN: 修复 6H 以上统计曲线在启动初期或 30D 边界附近可能回退扫描原始指标并加载失败的问题，长范围曲线增加 rollup 边界容错和前端短重试。
 - en-US: Fixed 6H+ stats charts potentially falling back to raw metric scans and failing during startup or near the 30D boundary; long-range charts now add rollup boundary tolerance and short frontend retries.
+- zh-CN: GPU 卡片限速 tag 现在同时显示当前 P-state；移动端曲线点位提示改为触摸后短暂停留，便于查看具体数值。
+- en-US: GPU card throttle tags now include the current P-state, and mobile chart point tooltips stay visible briefly after touch for easier value inspection.
 
 ## [0.1.7] - 2026-06-08
 

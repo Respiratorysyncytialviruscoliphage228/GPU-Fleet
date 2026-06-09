@@ -1064,6 +1064,7 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
     placeholderData: (previous) => previous
   });
   const points = mergeSeriesWithLatest(series.data ?? [], item);
+  const throttleLabel = hasClockThrottle(item) ? `Throttle${gpu.pstate ? ` ${gpu.pstate}` : ''}` : gpu.pstate || '-';
 
   return (
     <article
@@ -1087,7 +1088,7 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
 
       <div className="gpu-card-meta">
         <GPUMetaPill className={isPCIeDegraded(item) ? 'warn' : ''} title={pcieTitle(item)}>{pcieLabel(item)}</GPUMetaPill>
-        <GPUMetaPill className={hasClockThrottle(item) ? 'warn' : ''}>{hasClockThrottle(item) ? 'Throttle' : gpu.pstate || '-'}</GPUMetaPill>
+        <GPUMetaPill className={hasClockThrottle(item) ? 'warn' : ''}>{throttleLabel}</GPUMetaPill>
         <GPUMetaPill>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</GPUMetaPill>
       </div>
 
@@ -1431,6 +1432,7 @@ function aggregateBucketTime(time: number) {
 
 function Sparkline({ samples, max, label, formatValue, className = '' }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string; className?: string }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const touchHoldTimer = React.useRef<number>();
   const width = 180;
   const height = 58;
   const pad = 4;
@@ -1444,18 +1446,48 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   });
   const line = smoothSparklinePath(pointData);
   const area = sparklineAreaPath(pointData, height - pad);
-  const active = hasLine && hoverIndex !== null ? pointData[hoverIndex] : undefined;
+  const active = hoverIndex !== null ? pointData[hoverIndex] : undefined;
 
-  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!hasLine) return;
+  useEffect(() => () => window.clearTimeout(touchHoldTimer.current), []);
+
+  function clearTouchHold() {
+    window.clearTimeout(touchHoldTimer.current);
+  }
+
+  function scheduleTouchHoldClear() {
+    clearTouchHold();
+    touchHoldTimer.current = window.setTimeout(() => setHoverIndex(null), 4200);
+  }
+
+  function revealPoint(event: React.PointerEvent<HTMLDivElement>) {
+    if (clean.length === 0) return;
+    clearTouchHold();
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 1;
     const index = Math.max(0, Math.min(clean.length - 1, Math.round(ratio * (clean.length - 1))));
     setHoverIndex(index);
   }
 
+  function onPointerLeave(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse') {
+      clearTouchHold();
+      setHoverIndex(null);
+      return;
+    }
+    scheduleTouchHoldClear();
+  }
+
   return (
-    <div className={`sparkline-wrap ${className}`} onPointerMove={onPointerMove} onPointerLeave={() => setHoverIndex(null)}>
+    <div
+      className={`sparkline-wrap ${className}`}
+      onPointerDown={revealPoint}
+      onPointerMove={revealPoint}
+      onPointerUp={(event) => {
+        if (event.pointerType !== 'mouse') scheduleTouchHoldClear();
+      }}
+      onPointerCancel={onPointerLeave}
+      onPointerLeave={onPointerLeave}
+    >
       <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} 历史趋势图`} preserveAspectRatio="none">
         <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
         {hasLine && (
