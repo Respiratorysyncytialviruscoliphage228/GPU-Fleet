@@ -36,6 +36,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed stats panels potentially firing too many series requests and showing empty charts or `Failed to fetch` for long ranges; long-range charts now use rollup indexes, with tighter responsive layout for stat rows and controls.
 - zh-CN: 优化 GPU 卡片 tag 胶囊高度和移动端三列排布，长文本改为自动跑马条显示，不再直接截断为省略号。
 - en-US: Refined GPU card tag pill height and kept three columns on mobile; long tag text now auto-scrolls marquee-style instead of truncating directly to an ellipsis.
+- zh-CN: 修复更新后等待服务端恢复时反复执行 Git fresh 检查导致等待时间明显变长的问题，恢复检测改为轻量版本确认。
+- en-US: Fixed post-update recovery waiting taking much longer because it repeatedly ran fresh Git checks; recovery detection now uses a lightweight version check.
+- zh-CN: 修复 6H 以上统计曲线在启动初期或 30D 边界附近可能回退扫描原始指标并加载失败的问题，长范围曲线增加 rollup 边界容错和前端短重试。
+- en-US: Fixed 6H+ stats charts potentially falling back to raw metric scans and failing during startup or near the 30D boundary; long-range charts now add rollup boundary tolerance and short frontend retries.
 
 ## [0.1.7] - 2026-06-08
 

@@ -234,11 +234,15 @@ func Changelog() []ChangelogEntry {
 				"修复 GPU 卡片 tag 区域在 PCIe 降级文案较长时出现横向滚动条的问题，标签改为固定网格并保留完整 hover 提示。",
 				"修复统计面板展开长时间范围曲线时可能触发过多 series 请求、显示空图或 `Failed to fetch` 的问题；长范围曲线改用聚合索引，并优化统计行与控制区的窄宽度排版。",
 				"优化 GPU 卡片 tag 胶囊高度和移动端三列排布，长文本改为自动跑马条显示，不再直接截断为省略号。",
+				"修复更新后等待服务端恢复时反复执行 Git fresh 检查导致等待时间明显变长的问题，恢复检测改为轻量版本确认。",
+				"修复 6H 以上统计曲线在启动初期或 30D 边界附近可能回退扫描原始指标并加载失败的问题，长范围曲线增加 rollup 边界容错和前端短重试。",
 			},
 			FixedEN: []string{
 				"Fixed GPU card tag rows showing a horizontal scrollbar when PCIe degradation labels were long; tags now use a fixed grid while preserving the full hover tooltip.",
 				"Fixed stats panels potentially firing too many series requests and showing empty charts or `Failed to fetch` for long ranges; long-range charts now use rollup indexes, with tighter responsive layout for stat rows and controls.",
 				"Refined GPU card tag pill height and kept three columns on mobile; long tag text now auto-scrolls marquee-style instead of truncating directly to an ellipsis.",
+				"Fixed post-update recovery waiting taking much longer because it repeatedly ran fresh Git checks; recovery detection now uses a lightweight version check.",
+				"Fixed 6H+ stats charts potentially falling back to raw metric scans and failing during startup or near the 30D boundary; long-range charts now add rollup boundary tolerance and short frontend retries.",
 			},
 		},
 		{

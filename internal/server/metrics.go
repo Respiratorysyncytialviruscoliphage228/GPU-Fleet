@@ -26,6 +26,7 @@ const (
 	rawIndexAge           = time.Hour
 	minuteRollupAge       = 24 * time.Hour
 	hourRollupAge         = 30 * 24 * time.Hour
+	rollupBoundarySlack   = 5 * time.Minute
 )
 
 type MetricsStore struct {
@@ -403,10 +404,9 @@ func (s *MetricsStore) pruneIndexLocked(now time.Time) {
 }
 
 func pruneRollups(index map[string]map[int64]*metricRollupBucket, cutoff time.Time) {
-	cutoffUnix := cutoff.Unix()
 	for key, buckets := range index {
-		for bucketAt := range buckets {
-			if bucketAt < cutoffUnix {
+		for bucketAt, bucket := range buckets {
+			if bucket == nil || bucket.Last.Before(cutoff) {
 				delete(buckets, bucketAt)
 			}
 		}
@@ -457,9 +457,9 @@ func (s *MetricsStore) seriesRollupFromIndex(deviceID, gpuID string, since time.
 	}
 	now := time.Now().UTC()
 	var source map[string]map[int64]*metricRollupBucket
-	if !since.Before(now.Add(-minuteRollupAge)) {
+	if !since.Before(now.Add(-minuteRollupAge - rollupBoundarySlack)) {
 		source = s.minuteRollups
-	} else if !since.Before(now.Add(-hourRollupAge)) {
+	} else if !since.Before(now.Add(-hourRollupAge - rollupBoundarySlack)) {
 		source = s.hourRollups
 	} else {
 		return nil, false

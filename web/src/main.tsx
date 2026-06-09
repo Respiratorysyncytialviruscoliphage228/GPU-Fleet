@@ -286,19 +286,19 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
   while (Date.now() < deadline) {
     await new Promise((resolve) => window.setTimeout(resolve, 1800));
     try {
-      const status = await getUpdateStatus(true);
-      const release = await getVersion().catch(() => undefined);
-      const reachedTarget = !pending.target_commit || status.local_commit === pending.target_commit || status.remote_commit === pending.target_commit;
-      if (Date.now() >= minimumWaitUntil && (sawFailure || reachedTarget)) {
+      const release = await getVersion();
+      const reachedTarget = releaseMatchesPendingTarget(release, pending);
+      const targetKnown = pendingTargetKnown(pending);
+      const recoveredWithoutTarget = !targetKnown && sawFailure && Boolean(release);
+      if (Date.now() >= minimumWaitUntil && (reachedTarget || recoveredWithoutTarget)) {
         window.localStorage.removeItem(updatePendingKey);
-        storeCachedUpdateStatus(status);
         const serverNotice = await getUpdateNotice()
           .then((result) => completedNoticeFromServer(result.notice))
           .catch(() => undefined);
         writeJSON(updateNoticeKey, (hasMeaningfulUpdateSummary(serverNotice) ? serverNotice : undefined) ?? {
           ...pending,
           product: release?.product,
-          current_commit: status.local_commit || release?.commit,
+          current_commit: release?.commit || pending.current_commit,
           current_version: release?.version,
           completed_at: new Date().toISOString()
         } satisfies CompletedUpdateNotice);
@@ -309,6 +309,19 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
       sawFailure = true;
     }
   }
+}
+
+function releaseMatchesPendingTarget(release: ReleaseInfo | undefined, pending: PendingUpdateNotice) {
+  if (!release) return false;
+  if (!pendingTargetKnown(pending)) return true;
+  if (pending.target_commit && release.commit === pending.target_commit) return true;
+  if (pending.current_commit && release.commit === pending.current_commit) return true;
+  if (pending.target_commit || pending.current_commit) return false;
+  return Boolean(pending.current_version && release.version === pending.current_version);
+}
+
+function pendingTargetKnown(pending: PendingUpdateNotice) {
+  return Boolean(pending.target_commit || pending.current_commit || pending.current_version);
 }
 
 async function waitForServerAfterRestart(pending: PendingUpdateNotice) {
@@ -2264,7 +2277,8 @@ function StatsTrendCard({ row, hours }: { row: GPUStats; hours: number }) {
     queryKey: statsSeriesQueryKey(row, hours),
     queryFn: () => getGPUSeries(row.device_id, row.gpu_id, hours),
     staleTime: 30_000,
-    retry: false
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1500 * 2 ** attempt, 6000)
   });
   const points = series.data ?? [];
   const error = series.error instanceof Error ? series.error : undefined;

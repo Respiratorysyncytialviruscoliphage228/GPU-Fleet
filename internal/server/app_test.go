@@ -1150,6 +1150,51 @@ func TestMetricsStoreCompactsColdSegmentsAndCleansBySegmentTime(t *testing.T) {
 	}
 }
 
+func TestMetricsStoreSeriesRollupCoversThirtyDayBoundary(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	util := 61.0
+	power := 244.0
+	sampleAt := time.Now().UTC().Add(-hourRollupAge + 2*time.Minute)
+	if err := store.AppendBatch(model.SampleBatch{
+		DeviceID:     "rig-rollup",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: sampleAt,
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "0",
+				UUIDHash:              "uuid-rollup",
+				Name:                  "NVIDIA Rollup GPU",
+				DriverVersion:         "999.1",
+				MemoryTotalBytes:      24 * 1024 * 1024 * 1024,
+				MemoryUsedBytes:       8 * 1024 * 1024 * 1024,
+				UtilizationGPUPercent: &util,
+				PowerDrawWatts:        &power,
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segmentPath := filepath.Join(root, "metrics", "samples-"+sampleAt.Format("2006010215")+".jsonl.gz")
+	if err := os.Remove(segmentPath); err != nil {
+		t.Fatal(err)
+	}
+
+	points, err := store.SeriesRollup("rig-rollup", "0", time.Now().UTC().Add(-hourRollupAge))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("expected 30-day boundary query to use rollup index, got %d points", len(points))
+	}
+	if points[0].UtilizationGPUPercent == nil || *points[0].UtilizationGPUPercent != util {
+		t.Fatalf("unexpected rollup point: %+v", points[0])
+	}
+}
+
 func TestMetricsStoreSegmentLocksDoNotBlockUnrelatedWrites(t *testing.T) {
 	root := t.TempDir()
 	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
