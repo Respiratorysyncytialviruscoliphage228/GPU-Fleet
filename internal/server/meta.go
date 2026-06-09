@@ -62,6 +62,11 @@ type ServiceConfig struct {
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
 	AutoUpdateEnabled *bool     `json:"auto_update_enabled,omitempty"`
 	MinFreeBytes      uint64    `json:"min_free_bytes,omitempty"`
+	EnergyPricePerKWh float64   `json:"energy_price_per_kwh,omitempty"`
+	EnergyCurrency    string    `json:"energy_currency,omitempty"`
+	ThermalHotCelsius float64   `json:"thermal_hot_celsius,omitempty"`
+	IdleUtilPercent   float64   `json:"idle_utilization_percent,omitempty"`
+	IdlePowerWatts    float64   `json:"idle_power_watts,omitempty"`
 	CertPath          string    `json:"cert_path,omitempty"`
 	KeyPath           string    `json:"key_path,omitempty"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
@@ -71,6 +76,32 @@ type ServiceConfig struct {
 
 func (c ServiceConfig) AutoUpdateOn() bool {
 	return c.AutoUpdateEnabled == nil || *c.AutoUpdateEnabled
+}
+
+func (c ServiceConfig) EnergySettings() EnergySettings {
+	settings := EnergySettings{
+		EnergyPricePerKWh:      c.EnergyPricePerKWh,
+		EnergyCurrency:         strings.TrimSpace(c.EnergyCurrency),
+		ThermalHotCelsius:      c.ThermalHotCelsius,
+		IdleUtilizationPercent: c.IdleUtilPercent,
+		IdlePowerWatts:         c.IdlePowerWatts,
+	}
+	if settings.EnergyPricePerKWh < 0 {
+		settings.EnergyPricePerKWh = 0
+	}
+	if settings.EnergyCurrency == "" {
+		settings.EnergyCurrency = defaultEnergyCurrency
+	}
+	if settings.ThermalHotCelsius <= 0 {
+		settings.ThermalHotCelsius = defaultThermalHotCelsius
+	}
+	if settings.IdleUtilizationPercent <= 0 {
+		settings.IdleUtilizationPercent = defaultIdleUtilizationPercent
+	}
+	if settings.IdlePowerWatts <= 0 {
+		settings.IdlePowerWatts = defaultIdlePowerWatts
+	}
+	return settings
 }
 
 type UpdateNotice struct {
@@ -453,6 +484,22 @@ func (s *MetadataStore) UpdateAutoUpdateEnabled(enabled bool) (ServiceConfig, er
 	} else {
 		s.addAuditLocked("auto_update_disabled", "disabled automatic update checks")
 	}
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateEnergySettings(settings EnergySettings) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := validateEnergySettings(settings); err != nil {
+		return ServiceConfig{}, err
+	}
+	s.data.Service.EnergyPricePerKWh = settings.EnergyPricePerKWh
+	s.data.Service.EnergyCurrency = normalizeEnergyCurrency(settings.EnergyCurrency)
+	s.data.Service.ThermalHotCelsius = settings.ThermalHotCelsius
+	s.data.Service.IdleUtilPercent = settings.IdleUtilizationPercent
+	s.data.Service.IdlePowerWatts = settings.IdlePowerWatts
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("energy_display_settings_changed", "changed energy and thermal display settings")
 	return s.data.Service, s.saveLocked()
 }
 

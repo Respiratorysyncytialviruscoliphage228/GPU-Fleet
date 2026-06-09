@@ -17,6 +17,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Settings now includes a read-only diagnostics package download with version, runtime, disk, device, GPU, process, cached update, and recent audit summaries while redacting proxy credentials and remote IPs.
 - zh-CN: 新增 Linux 服务端数据备份与恢复脚本，并在安装和运维文档中补充热备份、冷备份、显式确认恢复、回滚目录和故障排查流程。
 - en-US: Added Linux server data backup and restore scripts, with installation and operations docs for live backup, cold backup, explicit restore confirmation, rollback directories, and troubleshooting flow.
+- zh-CN: 新增只读能耗与热状态聚合 API，基于现有 GPU 功率、温度、利用率和限速原因计算 24H/7D/30D kWh、电费估算、空转高耗、高温和限速诊断，不下发任何功耗、风扇或频率控制。
+- en-US: Added a read-only energy and thermal summary API that derives 24H/7D/30D kWh, cost estimates, high-idle-power, thermal, and throttle diagnostics from existing GPU power, temperature, utilization, and throttle metrics without issuing power, fan, or clock controls.
 
 ### Changed / 变更
 

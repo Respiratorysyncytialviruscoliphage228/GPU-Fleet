@@ -865,6 +865,193 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	}
 }
 
+func TestEnergySummaryAPIIntegratesPowerAndDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var configResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{
+		"energy_price_per_kwh":     0.75,
+		"energy_currency":          "usd",
+		"thermal_hot_celsius":      85,
+		"idle_utilization_percent": 5,
+		"idle_power_watts":         100,
+	}, cookie, http.StatusOK, &configResponse)
+	if configResponse.Service.Energy.EnergyCurrency != "USD" || configResponse.Service.Energy.EnergyPricePerKWh != 0.75 {
+		t.Fatalf("expected energy display settings to be saved, got %+v", configResponse.Service.Energy)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{
+		"energy_price_per_kwh": -1,
+	}, cookie, http.StatusBadRequest, nil)
+
+	base := time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Minute)
+	utilBusy := 40.0
+	utilIdle := 2.0
+	tempNormal := 72.0
+	tempHot := 91.0
+	powerBusy := 100.0
+	powerIdle := 200.0
+	samples := make([]model.GPUSample, 0, 3)
+	for index := 0; index < 3; index++ {
+		throttle := "0x0000000000000000"
+		if index == 2 {
+			throttle = "HW Slowdown"
+		}
+		samples = append(samples, model.GPUSample{
+			Timestamp: base.Add(time.Duration(index*15) * time.Minute),
+			GPUs: []model.GPUStatus{
+				{
+					GPUID:                 "0",
+					UUIDHash:              "uuid-energy-0",
+					Name:                  "NVIDIA Busy GPU",
+					DriverVersion:         "999.1",
+					MemoryTotalBytes:      16 * 1024 * 1024 * 1024,
+					MemoryUsedBytes:       5 * 1024 * 1024 * 1024,
+					UtilizationGPUPercent: &utilBusy,
+					TemperatureCelsius:    &tempNormal,
+					PowerDrawWatts:        &powerBusy,
+				},
+				{
+					GPUID:                 "1",
+					UUIDHash:              "uuid-energy-1",
+					Name:                  "NVIDIA Idle Hot GPU",
+					DriverVersion:         "999.1",
+					MemoryTotalBytes:      16 * 1024 * 1024 * 1024,
+					MemoryUsedBytes:       1 * 1024 * 1024 * 1024,
+					UtilizationGPUPercent: &utilIdle,
+					TemperatureCelsius:    &tempHot,
+					PowerDrawWatts:        &powerIdle,
+					ClockThrottleReasons:  throttle,
+				},
+			},
+		})
+	}
+	if err := app.metrics.AppendBatch(model.SampleBatch{
+		DeviceID:     "local-dev",
+		AgentVersion: model.AgentVersion,
+		Samples:      samples,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var response energySummaryResponse
+	doJSON(t, handler, http.MethodGet, "/api/v1/energy/summary?hours=2", nil, cookie, http.StatusOK, &response)
+	assertFloatNear(t, response.Summary.CurrentPowerWatts, 300, 0.001)
+	assertFloatNear(t, response.Summary.PeakPowerWatts, 300, 0.001)
+	assertFloatNear(t, response.Summary.EnergyKWh, 0.15, 0.0001)
+	assertFloatNear(t, response.Summary.EstimatedCost, 0.1125, 0.0001)
+	assertFloatNear(t, response.Summary.IdleWasteKWh, 0.1, 0.0001)
+	if response.Summary.HotGPUCount != 1 || response.Summary.ThrottledGPUCount != 1 || response.Summary.HighIdlePowerGPUCount != 1 {
+		t.Fatalf("unexpected energy summary health counters: %+v", response.Summary)
+	}
+	if len(response.GPUs) != 2 || response.GPUs[0].GPUID != "1" || !response.GPUs[0].Throttled {
+		t.Fatalf("expected energy GPU rows sorted by kWh with throttled hot GPU first, got %+v", response.GPUs)
+	}
+	kinds := map[string]bool{}
+	for _, item := range response.Diagnostics {
+		kinds[item.Kind] = true
+	}
+	for _, want := range []string{"thermal", "throttle", "idle_waste"} {
+		if !kinds[want] {
+			t.Fatalf("expected diagnostic kind %q, got %+v", want, response.Diagnostics)
+		}
+	}
+	if len(response.Series) != 3 {
+		t.Fatalf("expected three energy series buckets, got %+v", response.Series)
+	}
+}
+
+func TestEnergySummarySkipsOfflinePowerGaps(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	base := time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Minute)
+	util := 50.0
+	tempValue := 65.0
+	power := 250.0
+	if err := app.metrics.AppendBatch(model.SampleBatch{
+		DeviceID:     "local-dev",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{
+			{
+				Timestamp: base,
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					Name:                  "NVIDIA Gap GPU",
+					UtilizationGPUPercent: &util,
+					TemperatureCelsius:    &tempValue,
+					PowerDrawWatts:        &power,
+				}},
+			},
+			{
+				Timestamp: base.Add(2 * time.Hour),
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					Name:                  "NVIDIA Gap GPU",
+					UtilizationGPUPercent: &util,
+					TemperatureCelsius:    &tempValue,
+					PowerDrawWatts:        &power,
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var response energySummaryResponse
+	doJSON(t, handler, http.MethodGet, "/api/v1/energy/summary?hours=24", nil, cookie, http.StatusOK, &response)
+	if response.Summary.EnergyKWh != 0 || response.GPUs[0].EnergyKWh != 0 {
+		t.Fatalf("offline gap should not accumulate energy, got summary=%+v gpus=%+v", response.Summary, response.GPUs)
+	}
+	if response.Summary.SampleCount != 2 || response.Summary.PowerSampleCount != 2 {
+		t.Fatalf("expected samples to remain visible even when gap is skipped, got %+v", response.Summary)
+	}
+}
+
+func TestEnergySeriesForGPUUsesThirtyDayRollup(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	util := 61.0
+	power := 244.0
+	sampleAt := time.Now().UTC().Add(-hourRollupAge + 2*time.Minute)
+	if err := store.AppendBatch(model.SampleBatch{
+		DeviceID:     "rig-energy-rollup",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: sampleAt,
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "0",
+				Name:                  "NVIDIA Rollup GPU",
+				UtilizationGPUPercent: &util,
+				PowerDrawWatts:        &power,
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segmentPath := filepath.Join(root, "metrics", "samples-"+sampleAt.Format("2006010215")+".jsonl.gz")
+	if err := os.Remove(segmentPath); err != nil {
+		t.Fatal(err)
+	}
+
+	points, err := energySeriesForGPU(store, "rig-energy-rollup", "0", time.Now().UTC().Add(-hourRollupAge), 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 || points[0].PowerDrawWatts == nil || *points[0].PowerDrawWatts != power {
+		t.Fatalf("expected energy API helper to use 30-day rollup index, got %+v", points)
+	}
+}
+
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
@@ -1672,6 +1859,17 @@ func testCertificate(t *testing.T) ([]byte, []byte, time.Time) {
 
 func sameSecond(left, right time.Time) bool {
 	return left.UTC().Truncate(time.Second).Equal(right.UTC().Truncate(time.Second))
+}
+
+func assertFloatNear(t *testing.T, got, want, tolerance float64) {
+	t.Helper()
+	diff := got - want
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > tolerance {
+		t.Fatalf("expected %.6f to be within %.6f of %.6f", got, tolerance, want)
+	}
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, cookie *http.Cookie, wantStatus int, out any) *httptest.ResponseRecorder {

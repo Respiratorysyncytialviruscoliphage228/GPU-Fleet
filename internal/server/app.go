@@ -178,6 +178,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/devices", a.requireSession(a.handleDevices))
 	mux.HandleFunc("/api/v1/gpus/", a.requireSession(a.handleGPUSeries))
 	mux.HandleFunc("/api/v1/stats/gpu-utilization", a.requireSession(a.handleGPUStats))
+	mux.HandleFunc("/api/v1/energy/summary", a.requireSession(a.handleEnergySummary))
 	mux.HandleFunc("/api/v1/processes/latest", a.requireSession(a.handleLatestProcesses))
 	mux.HandleFunc("/api/v1/admin/setup/reopen", a.requireSession(a.handleSetupReopen))
 	mux.HandleFunc("/api/v1/admin/setup/apply", a.requireSession(a.handleSetupApplyAuthenticated))
@@ -485,9 +486,14 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Port              int   `json:"port"`
-		MinFreeMB         int   `json:"min_free_mb"`
-		AutoUpdateEnabled *bool `json:"auto_update_enabled"`
+		Port                   int      `json:"port"`
+		MinFreeMB              int      `json:"min_free_mb"`
+		AutoUpdateEnabled      *bool    `json:"auto_update_enabled"`
+		EnergyPricePerKWh      *float64 `json:"energy_price_per_kwh"`
+		EnergyCurrency         *string  `json:"energy_currency"`
+		ThermalHotCelsius      *float64 `json:"thermal_hot_celsius"`
+		IdleUtilizationPercent *float64 `json:"idle_utilization_percent"`
+		IdlePowerWatts         *float64 `json:"idle_power_watts"`
 	}
 	if err := decodeJSON(r, &body, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -523,6 +529,29 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.wakeUpdateMonitor()
+	}
+	if body.EnergyPricePerKWh != nil || body.EnergyCurrency != nil || body.ThermalHotCelsius != nil || body.IdleUtilizationPercent != nil || body.IdlePowerWatts != nil {
+		settings := config.EnergySettings()
+		if body.EnergyPricePerKWh != nil {
+			settings.EnergyPricePerKWh = *body.EnergyPricePerKWh
+		}
+		if body.EnergyCurrency != nil {
+			settings.EnergyCurrency = *body.EnergyCurrency
+		}
+		if body.ThermalHotCelsius != nil {
+			settings.ThermalHotCelsius = *body.ThermalHotCelsius
+		}
+		if body.IdleUtilizationPercent != nil {
+			settings.IdleUtilizationPercent = *body.IdleUtilizationPercent
+		}
+		if body.IdlePowerWatts != nil {
+			settings.IdlePowerWatts = *body.IdlePowerWatts
+		}
+		config, err = a.meta.UpdateEnergySettings(settings)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
@@ -1934,6 +1963,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		UpdateProxy:       config.UpdateProxy,
 		AutoUpdateEnabled: config.AutoUpdateOn(),
 		MinFreeBytes:      config.MinFreeBytes,
+		Energy:            config.EnergySettings(),
 		CertNotAfter:      config.CertNotAfter,
 		ConfigRevision:    config.ConfigRevision,
 		UpdatedAt:         config.UpdatedAt,
@@ -2131,22 +2161,23 @@ type setupStatusResponse struct {
 }
 
 type serviceStatus struct {
-	CurrentAddr       string    `json:"current_addr"`
-	CurrentScheme     string    `json:"current_scheme"`
-	ConfiguredAddr    string    `json:"configured_addr"`
-	ConfiguredPort    int       `json:"configured_port"`
-	HTTPSEnabled      bool      `json:"https_enabled"`
-	Language          string    `json:"language"`
-	GuestEnabled      bool      `json:"guest_enabled"`
-	UpdateProxy       string    `json:"update_proxy,omitempty"`
-	AutoUpdateEnabled bool      `json:"auto_update_enabled"`
-	MinFreeBytes      uint64    `json:"min_free_bytes"`
-	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
-	ConfigRevision    int       `json:"config_revision"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
-	RestartRequired   bool      `json:"restart_required"`
-	FirstStartupHTTP  bool      `json:"first_startup_http"`
-	ManagementBaseURL string    `json:"management_base_url,omitempty"`
+	CurrentAddr       string         `json:"current_addr"`
+	CurrentScheme     string         `json:"current_scheme"`
+	ConfiguredAddr    string         `json:"configured_addr"`
+	ConfiguredPort    int            `json:"configured_port"`
+	HTTPSEnabled      bool           `json:"https_enabled"`
+	Language          string         `json:"language"`
+	GuestEnabled      bool           `json:"guest_enabled"`
+	UpdateProxy       string         `json:"update_proxy,omitempty"`
+	AutoUpdateEnabled bool           `json:"auto_update_enabled"`
+	MinFreeBytes      uint64         `json:"min_free_bytes"`
+	Energy            EnergySettings `json:"energy"`
+	CertNotAfter      time.Time      `json:"cert_not_after,omitempty"`
+	ConfigRevision    int            `json:"config_revision"`
+	UpdatedAt         time.Time      `json:"updated_at,omitempty"`
+	RestartRequired   bool           `json:"restart_required"`
+	FirstStartupHTTP  bool           `json:"first_startup_http"`
+	ManagementBaseURL string         `json:"management_base_url,omitempty"`
 }
 
 type guestServiceStatus struct {
