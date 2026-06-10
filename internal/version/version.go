@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "0.1.10"
+	Version   = "1.0.11"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,18 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "1.0.11",
+			Date:    "2026-06-10",
+			Title:   "可靠性、CI 与发布工程强化",
+			TitleEN: "Reliability, CI, and release engineering hardening",
+			Fixed: []string{
+				"指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。",
+			},
+			FixedEN: []string{
+				"Metric cold-segment compaction now uses backup, replace, and rollback steps so failed replacement or crashes do not discard the original segment.",
+			},
+		},
 		{
 			Version: "0.1.10",
 			Date:    "2026-06-10",

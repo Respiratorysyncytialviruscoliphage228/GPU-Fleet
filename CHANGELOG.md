@@ -4,6 +4,18 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.11] - 2026-06-10
+
+### Title / 标题
+
+- zh-CN: 可靠性、CI 与发布工程强化
+- en-US: Reliability, CI, and release engineering hardening
+
+### Fixed / 修复
+
+- zh-CN: 指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。
+- en-US: Metric cold-segment compaction now uses backup, replace, and rollback steps so failed replacement or crashes do not discard the original segment.
+
 ## [0.1.10] - 2026-06-10
 
 ### Title / 标题

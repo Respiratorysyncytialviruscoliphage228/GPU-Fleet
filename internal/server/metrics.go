@@ -23,6 +23,8 @@ var ErrInsufficientStorage = errors.New("insufficient storage")
 const (
 	coldSegmentAge        = 7 * 24 * time.Hour
 	compactSegmentComment = "gpufleet-compact-v1"
+	compactSegmentTmp     = ".tmp"
+	compactSegmentBackup  = ".bak"
 	rawIndexAge           = time.Hour
 	minuteRollupAge       = 24 * time.Hour
 	hourRollupAge         = 30 * 24 * time.Hour
@@ -608,6 +610,9 @@ func (s *MetricsStore) cleanup() error {
 }
 
 func (s *MetricsStore) segmentFiles() ([]string, error) {
+	if err := recoverCompactSegmentBackups(s.dir); err != nil {
+		return nil, err
+	}
 	pattern := filepath.Join(s.dir, "samples-*.jsonl.gz")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -677,6 +682,9 @@ func isIgnorableSegmentScanError(err error) bool {
 }
 
 func compactSegment(path string, segmentAt time.Time) error {
+	if err := recoverCompactSegmentBackup(path); err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -685,7 +693,7 @@ func compactSegment(path string, segmentAt time.Time) error {
 		return nil
 	}
 
-	tmp := path + ".tmp"
+	tmp := path + compactSegmentTmp
 	_ = os.Remove(tmp)
 	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
@@ -711,8 +719,9 @@ func compactSegment(path string, segmentAt time.Time) error {
 		}
 	})
 	closeErr := gw.Close()
+	syncErr := file.Sync()
 	fileErr := file.Close()
-	if err != nil || encodeErr != nil || closeErr != nil || fileErr != nil {
+	if err != nil || encodeErr != nil || closeErr != nil || syncErr != nil || fileErr != nil {
 		_ = os.Remove(tmp)
 		if err != nil {
 			return err
@@ -723,17 +732,86 @@ func compactSegment(path string, segmentAt time.Time) error {
 		if closeErr != nil {
 			return closeErr
 		}
+		if syncErr != nil {
+			return syncErr
+		}
 		return fileErr
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	return replaceCompactSegment(path, tmp, segmentAt)
+}
+
+func replaceCompactSegment(path, tmp string, segmentAt time.Time) error {
+	backup := path + compactSegmentBackup
+	if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(path, backup); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
+		restoreErr := os.Rename(backup, path)
 		_ = os.Remove(tmp)
+		if restoreErr != nil {
+			return fmt.Errorf("replace compacted metric segment: %w; rollback failed: %v", err, restoreErr)
+		}
 		return err
 	}
-	return os.Chtimes(path, segmentAt, segmentAt)
+	if err := os.Chtimes(path, segmentAt, segmentAt); err != nil {
+		restoreErr := rollbackCompactSegmentReplacement(path, backup)
+		if restoreErr != nil {
+			return fmt.Errorf("timestamp compacted metric segment: %w; rollback failed: %v", err, restoreErr)
+		}
+		return err
+	}
+	if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func rollbackCompactSegmentReplacement(path, backup string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Rename(backup, path)
+}
+
+func recoverCompactSegmentBackups(dir string) error {
+	pattern := filepath.Join(dir, "samples-*.jsonl.gz"+compactSegmentBackup)
+	backups, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+	sort.Strings(backups)
+	for _, backup := range backups {
+		path := strings.TrimSuffix(backup, compactSegmentBackup)
+		if err := recoverCompactSegmentBackup(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func recoverCompactSegmentBackup(path string) error {
+	backup := path + compactSegmentBackup
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if _, err := os.Stat(backup); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	_ = os.Remove(path + compactSegmentTmp)
+	return os.Rename(backup, path)
 }
 
 func isCompactedSegment(path string, segmentAt time.Time, info os.FileInfo) bool {

@@ -27,7 +27,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 ## 当前状态
 
-GPUFleet 当前版本是 `0.1.10`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `1.0.11`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -482,7 +482,7 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
-  --expected-version v0.1.10 `
+  --expected-version v1.0.11 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true

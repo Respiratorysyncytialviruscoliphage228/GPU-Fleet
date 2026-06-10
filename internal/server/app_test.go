@@ -2255,6 +2255,61 @@ func TestMetricsStoreCompactsColdSegmentsAndCleansBySegmentTime(t *testing.T) {
 	}
 }
 
+func TestMetricsStoreRecoversInterruptedSegmentCompactionBackup(t *testing.T) {
+	root := t.TempDir()
+	metricsDir := filepath.Join(root, "metrics")
+	store, err := NewMetricsStore(metricsDir, 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sampleAt := time.Now().UTC().Add(-8 * 24 * time.Hour).Truncate(time.Hour)
+	util := 51.0
+	if err := store.AppendBatch(model.SampleBatch{
+		DeviceID:     "rig-recover",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: sampleAt,
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "0",
+				Name:                  "NVIDIA Recovery GPU",
+				UtilizationGPUPercent: &util,
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segmentPath := filepath.Join(metricsDir, "samples-"+sampleAt.Format("2006010215")+".jsonl.gz")
+	backupPath := segmentPath + compactSegmentBackup
+	tmpPath := segmentPath + compactSegmentTmp
+	if err := os.Rename(segmentPath, backupPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("interrupted compact segment"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := NewMetricsStore(metricsDir, 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(segmentPath); err != nil {
+		t.Fatalf("expected segment to be restored from backup: %v", err)
+	}
+	if _, err := os.Stat(backupPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected consumed backup to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(tmpPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected interrupted temp segment to be removed, got err=%v", err)
+	}
+	points, err := recovered.Series("rig-recover", "0", sampleAt.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 || points[0].UtilizationGPUPercent == nil || *points[0].UtilizationGPUPercent != util {
+		t.Fatalf("expected restored segment to remain readable, got %+v", points)
+	}
+}
+
 func TestMetricsStoreSeriesRollupCoversThirtyDayBoundary(t *testing.T) {
 	root := t.TempDir()
 	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
