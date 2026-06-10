@@ -233,12 +233,14 @@ func Changelog() []ChangelogEntry {
 				"能源页的 GPU、样本和诊断数量，以及设置页服务状态、操作说明、Agent 更新说明、更新确认和版本信息等文案补齐显式 i18n。",
 				"匿名遥测上报现在复用设置页配置的服务端代理，并在诊断包中暴露脱敏后的遥测状态，避免无法直连 `workers.dev` 的服务器让 README GPU 徽章长期停留为 0。",
 				"如果旧进程的匿名遥测失败留下了长时间重试退避，服务端重启后会在首次检查时重试一次，避免修复网络或代理后仍要等待数小时才更新徽章。",
+				"总览 GPU 卡片不再因为 PCIe 当前链路低于最大能力而整体显示黄色“关注”，PCIe 降级仍会保留在独立标签和统计中。",
 			},
 			FixedEN: []string{
 				"Overview top metric sparklines now edge-align hover tooltips near the left and right sides, preventing mobile taps on right-side samples from widening the page and affecting the bottom navigation.",
 				"Energy-page GPU, sample, and diagnostic counts, plus Settings service status, operation descriptions, Agent update help, update confirmations, and release metadata now use explicit i18n strings.",
 				"Anonymous telemetry reporting now reuses the server proxy configured in Settings and includes redacted telemetry state in diagnostics, preventing servers that cannot directly reach `workers.dev` from leaving the README GPU badge stuck at 0.",
 				"When a previous process left a long anonymous-telemetry retry backoff, the server now retries once on the first check after restart so badge updates do not wait hours after network or proxy fixes.",
+				"Overview GPU cards no longer turn yellow for PCIe links below maximum capability; PCIe degradation remains visible in the dedicated pill and summary count.",
 			},
 		},
 		{

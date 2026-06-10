@@ -35,6 +35,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Anonymous telemetry reporting now reuses the server proxy configured in Settings and includes redacted telemetry state in diagnostics, preventing servers that cannot directly reach `workers.dev` from leaving the README GPU badge stuck at 0.
 - zh-CN: 如果旧进程的匿名遥测失败留下了长时间重试退避，服务端重启后会在首次检查时重试一次，避免修复网络或代理后仍要等待数小时才更新徽章。
 - en-US: When a previous process left a long anonymous-telemetry retry backoff, the server now retries once on the first check after restart so badge updates do not wait hours after network or proxy fixes.
+- zh-CN: 总览 GPU 卡片不再因为 PCIe 当前链路低于最大能力而整体显示黄色“关注”，PCIe 降级仍会保留在独立标签和统计中。
+- en-US: Overview GPU cards no longer turn yellow for PCIe links below maximum capability; PCIe degradation remains visible in the dedicated pill and summary count.
 
 ## [0.1.9] - 2026-06-09
 

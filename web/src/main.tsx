@@ -1957,7 +1957,7 @@ function gpuHealth(item: StoredGPU, device?: Device): { tone: 'good' | 'warn' | 
   if (!device?.enabled || device.status === 'offline') return { tone: 'offline', label: '离线' };
   if (item.gpu.collection_error) return { tone: 'bad', label: '采集异常' };
   if ((item.gpu.temperature_celsius ?? 0) >= hotGPUThreshold) return { tone: 'bad', label: '高温' };
-  if ((item.gpu.temperature_celsius ?? 0) >= warmGPUThreshold || (memoryUsagePercent(item) ?? 0) >= 90 || isPCIeDegraded(item) || hasClockThrottle(item)) return { tone: 'warn', label: '关注' };
+  if ((item.gpu.temperature_celsius ?? 0) >= warmGPUThreshold || (memoryUsagePercent(item) ?? 0) >= 90 || hasClockThrottle(item)) return { tone: 'warn', label: '关注' };
   return { tone: 'good', label: '正常' };
 }
 
