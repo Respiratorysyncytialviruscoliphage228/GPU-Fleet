@@ -21,6 +21,11 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 新增 GitHub Actions CI，覆盖 Go vet/test、前端 npm audit/build、Linux 安装脚本 shellcheck 和 PowerShell 脚本静态检查。
 - en-US: Added GitHub Actions CI covering Go vet/test, frontend npm audit/build, Linux installer shellcheck, and PowerShell script analysis.
 
+### Changed / 变更
+
+- zh-CN: 前端构建增加手动分包，将 React、ECharts、TanStack Query、图标库等拆为独立 chunks，降低主入口包体并改善缓存命中。
+- en-US: Frontend builds now split React, ECharts, TanStack Query, and icon libraries into manual chunks, reducing the main entry bundle and improving cache reuse.
+
 ## [0.1.10] - 2026-06-10
 
 ### Title / 标题
