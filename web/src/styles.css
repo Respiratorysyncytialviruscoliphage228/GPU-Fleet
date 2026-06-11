@@ -1457,6 +1457,12 @@ input:focus-visible {
   align-items: start;
 }
 
+.energy-main-column {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
 .energy-trend-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0;
@@ -1504,7 +1510,7 @@ input:focus-visible {
 
 .energy-gpu-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(88px, max-content) minmax(84px, max-content) minmax(132px, max-content) minmax(80px, max-content) minmax(118px, max-content) minmax(66px, max-content) minmax(72px, max-content);
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr) auto;
   align-items: center;
   gap: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -1520,19 +1526,29 @@ input:focus-visible {
   min-width: 0;
 }
 
+.energy-gpu-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 8px 10px;
+  min-width: 0;
+}
+
 .energy-gpu-row strong,
 .energy-gpu-row p {
   overflow-wrap: anywhere;
 }
 
-.energy-gpu-row > span:not(.pill) {
+.energy-gpu-metrics > span {
   display: grid;
   gap: 3px;
-  justify-items: end;
+  justify-items: start;
   min-width: 0;
   font-weight: 800;
   line-height: 1.16;
-  white-space: nowrap;
+}
+
+.energy-gpu-metrics > span {
+  overflow-wrap: anywhere;
 }
 
 .energy-gpu-row small {
@@ -3024,10 +3040,7 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
   .energy-gpu-row {
-    grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(78px, max-content));
-  }
-  .energy-gpu-row > span:nth-of-type(n + 5) {
-    justify-items: start;
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr) auto;
   }
 }
 
@@ -3136,16 +3149,12 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
   .energy-gpu-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr auto;
     align-items: start;
   }
-  .energy-gpu-row > div,
-  .energy-gpu-row .pill {
+  .energy-gpu-metrics {
     grid-column: 1 / -1;
-  }
-  .energy-gpu-row > span:not(.pill) {
-    justify-items: start;
-    white-space: normal;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .energy-settings-form {
     grid-template-columns: 1fr;

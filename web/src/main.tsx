@@ -1168,11 +1168,12 @@ function EnergyPage({
       {error && <div className="banner danger">{error}</div>}
 
       <section className="energy-layout">
-        <EnergyTrendPanel energy={energy} hours={hours} />
+        <div className="energy-main-column">
+          <EnergyTrendPanel energy={energy} hours={hours} />
+          <EnergyGPUTable rows={energy?.gpus ?? []} config={config} language={language} />
+        </div>
         <EnergyDiagnosticsPanel diagnostics={energy?.diagnostics ?? []} language={language} />
       </section>
-
-      <EnergyGPUTable rows={energy?.gpus ?? []} config={config} language={language} />
     </>
   );
 }
@@ -1257,12 +1258,14 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
                 <strong>{row.gpu_name || row.gpu_id}</strong>
                 <p>{row.device_alias || row.device_id} · {row.gpu_id} · {sampleCountText(sampleCount(row.sample_count), t)}</p>
               </div>
-              <span><small>{t('耗电')}</small>{kwh(row.energy_kwh)}</span>
-              <span><small>{t('电费')}</small>{money(row.estimated_cost, config?.energy_currency, priceConfigured)}</span>
-              <span><small>{t('功率')}</small>{watts(row.average_power_watts)} / {watts(row.peak_power_watts)}</span>
-              <span><small>{t('峰值温度')}</small>{temp(row.peak_temperature_celsius)}</span>
-              <span><small>{t('空转高耗')}</small>{hasIdleWaste ? `${kwh(row.idle_waste_kwh)} · ${durationText(row.high_idle_power_seconds, language)}` : '-'}</span>
-              <span><small>{t('覆盖率')}</small>{coveragePct(row.coverage_percent)}</span>
+              <div className="energy-gpu-metrics">
+                <span><small>{t('耗电')}</small>{kwh(row.energy_kwh)}</span>
+                <span><small>{t('电费')}</small>{money(row.estimated_cost, config?.energy_currency, priceConfigured)}</span>
+                <span><small>{t('功率')}</small>{watts(row.average_power_watts)} / {watts(row.peak_power_watts)}</span>
+                <span><small>{t('峰值温度')}</small>{temp(row.peak_temperature_celsius)}</span>
+                <span><small>{t('空转高耗')}</small>{hasIdleWaste ? `${kwh(row.idle_waste_kwh)} · ${durationText(row.high_idle_power_seconds, language)}` : '-'}</span>
+                <span><small>{t('覆盖率')}</small>{coveragePct(row.coverage_percent)}</span>
+              </div>
               <span className={`pill ${tone}`}>{energyRowLabel(row, config, t)}</span>
             </div>
           );

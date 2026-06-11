@@ -25,6 +25,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 前端构建增加手动分包，将 React、ECharts、TanStack Query、图标库等拆为独立 chunks，降低主入口包体并改善缓存命中。
 - en-US: Frontend builds now split React, ECharts, TanStack Query, and icon libraries into manual chunks, reducing the main entry bundle and improving cache reuse.
+- zh-CN: 能源页将 GPU 能耗排行收进功率与热状态所在的左列，右列保留能源诊断，减少宽屏下排行横跨整页和趋势面板留白。
+- en-US: The Energy page now keeps the GPU energy ranking in the same left column as the power and thermal trends while the right column stays dedicated to diagnostics, reducing wide-screen spanning rows and trend-panel whitespace.
 
 ### Security / 安全
 
