@@ -184,7 +184,7 @@ sh ./scripts/restore-server-linux.sh
 
 故障排查顺序：
 
-1. 设置页下载诊断包，查看 `diagnostics.json` 中的版本、运行时、磁盘、指标分段、更新缓存和审计摘要。
+1. 设置页下载标准诊断包，查看 `diagnostics.json` 中的版本、运行时、磁盘、健康摘要、设备、GPU、1H/24H 指标窗口、Agent 配置摘要、更新缓存和审计摘要；需要深入排查 Agent、采集、进程或访客访问时再选择高级诊断包。高级包会额外包含完整 Agent 配置报告、脱敏进程快照、访客记录、Web 会话时间摘要和指标分段清单，但仍不会导出密钥、Cookie、私钥或完整 IP。
 2. 查看服务日志：`journalctl -u gpufleet-server --no-pager -l`。
 3. 查看更新重启日志：当前服务端二进制目录下的 `gpufleet-update-restart.log`。
 4. 如果在线更新后仓库已前进但二进制仍旧，重启后的服务端会优先尝试使用遗留的 `.next` 二进制完成替换；补救尝试会写入 `.next.recovery` 冷却标记，替换仍失败时服务端会先保持旧二进制可用，避免 systemd 无限重启。此时检查二进制目录写权限和日志中的 replacement/rollback 记录，再重新触发更新或等待冷却后重试。

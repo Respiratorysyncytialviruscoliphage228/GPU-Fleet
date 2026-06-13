@@ -47,6 +47,7 @@ import {
   changePassword,
   createDevice,
   databaseDownloadURL,
+  DiagnosticsLevel,
   diagnosticsDownloadURL,
   deleteDevice,
   Device,
@@ -4231,6 +4232,7 @@ function FilePicker({ label, accept, fileName, onChange }: { label: string; acce
 
 function DatabaseSettings({ data }: { data?: Overview }) {
   const { t } = useI18n();
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const size = fmtBytes(data?.database_size_bytes ?? 0);
   const days = storedDaysValue(data?.metric_stored_days, data?.retention_hours);
   const free = fmtBytes(data?.disk.free_bytes);
@@ -4248,12 +4250,72 @@ function DatabaseSettings({ data }: { data?: Overview }) {
           <Download size={16} />
           {t('下载数据库')}
         </a>
-        <a className="secondary action-button" href={diagnosticsDownloadURL()} download>
+        <button className="secondary action-button" type="button" onClick={() => setDiagnosticsOpen(true)}>
           <Download size={16} />
           {t('下载诊断包')}
-        </a>
+        </button>
       </div>
+      {diagnosticsOpen && <DiagnosticsDownloadDialog onClose={() => setDiagnosticsOpen(false)} />}
     </article>
+  );
+}
+
+function DiagnosticsDownloadDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const choices: Array<{ level: DiagnosticsLevel; title: string; body: string; tone: 'standard' | 'advanced' }> = [
+    {
+      level: 'standard',
+      title: t('标准诊断包'),
+      body: t('包含版本、运行时、服务配置、磁盘、健康摘要、设备、GPU、指标窗口、进程数量、Agent 配置摘要、更新状态和最近审计摘要。'),
+      tone: 'standard'
+    },
+    {
+      level: 'advanced',
+      title: t('高级诊断包'),
+      body: t('在标准包基础上增加完整 Agent 配置报告、脱敏进程快照、访客记录、Web 会话时间摘要和指标分段清单；仍不会导出密钥、Cookie、私钥或完整 IP。'),
+      tone: 'advanced'
+    }
+  ];
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog diagnostics-download-dialog" role="dialog" aria-modal="true" aria-labelledby="diagnostics-download-title" data-testid="diagnostics-download-dialog">
+        <div className="confirm-icon"><Download size={22} /></div>
+        <div className="confirm-copy">
+          <span>{t('诊断包导出')}</span>
+          <h2 id="diagnostics-download-title">{t('选择诊断包类型')}</h2>
+          <p>{t('标准包适合日常排障；高级包用于深入分析 Agent、采集、访客和进程状态。')}</p>
+        </div>
+        <div className="diagnostics-choice-list">
+          {choices.map((choice) => (
+            <a
+              className={`diagnostics-choice ${choice.tone}`}
+              href={diagnosticsDownloadURL(choice.level)}
+              download
+              onClick={onClose}
+              key={choice.level}
+            >
+              <strong>{choice.title}</strong>
+              <span>{choice.body}</span>
+            </a>
+          ))}
+        </div>
+        <div className="confirm-actions">
+          <button className="secondary" type="button" onClick={onClose}>{t('取消')}</button>
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 

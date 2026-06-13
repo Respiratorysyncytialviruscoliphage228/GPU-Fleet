@@ -1849,6 +1849,51 @@ input:focus {
   grid-column: 1 / -1;
 }
 
+.diagnostics-download-dialog {
+  width: min(560px, 100%);
+}
+
+.diagnostics-download-dialog .confirm-icon {
+  color: var(--good);
+  background: var(--good-soft);
+}
+
+.diagnostics-choice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostics-choice {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.diagnostics-choice:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  transform: translateY(-1px);
+}
+
+.diagnostics-choice.advanced {
+  border-color: color-mix(in srgb, var(--warn) 34%, var(--line));
+}
+
+.diagnostics-choice strong {
+  font-size: 15px;
+}
+
+.diagnostics-choice span {
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .confirm-icon {
   width: 42px;
   height: 42px;

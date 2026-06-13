@@ -2133,6 +2133,105 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	}
 	app.updateStatusCacheOK = true
 	app.updateMu.Unlock()
+	now := time.Now().UTC()
+	util := 99.0
+	temp := 86.0
+	power := 245.0
+	if err := app.metrics.AppendBatch(model.SampleBatch{
+		DeviceID:     "local-dev",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: now,
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "gpu0",
+				UUIDHash:              "uuid-hash-test",
+				Name:                  "NVIDIA Diagnostic GPU",
+				DriverVersion:         "999.1",
+				VBIOSVersion:          "vbios-test",
+				MemoryTotalBytes:      16 * 1024 * 1024 * 1024,
+				MemoryUsedBytes:       8 * 1024 * 1024 * 1024,
+				UtilizationGPUPercent: &util,
+				TemperatureCelsius:    &temp,
+				PowerDrawWatts:        &power,
+				PCIeLinkGeneration:    "3",
+				PCIeLinkGenerationMax: "4",
+				PCIeLinkWidth:         "8",
+				PCIeLinkWidthMax:      "16",
+				ClockThrottleReasons:  "0x0000000000000020",
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.RecordSample("local-dev", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.RecordAgentConfig("local-dev", sanitizeAgentConfigReport("local-dev", model.AgentConfigReport{
+		AgentVersion:          model.AgentVersion,
+		CollectedAt:           now,
+		Hostname:              "diagnostic-agent",
+		OS:                    "linux",
+		OSVersion:             "test-os",
+		Architecture:          "amd64",
+		Runtime:               "go-test",
+		ExecutablePath:        "/opt/gpufleet/gpufleet-agent",
+		WorkingDirectory:      "/opt/gpufleet",
+		ServerURL:             "https://agent:local-dev-secret@example.com:9008",
+		NvidiaSMICommand:      "nvidia-smi",
+		NvidiaSMIResolvedPath: "/usr/bin/nvidia-smi",
+		NvidiaSMIVersion:      "NVIDIA-SMI test",
+		SampleIntervalSeconds: 5,
+		ConfigIntervalSeconds: 3600,
+		ProcessesEnabled:      true,
+		GzipEnabled:           true,
+		QueuePath:             "/var/lib/gpufleet-agent/queue",
+		GPUs: []model.AgentGPUConfig{{
+			GPUID:         "gpu0",
+			Name:          "NVIDIA Diagnostic GPU",
+			DriverVersion: "999.1",
+		}},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.RecordAgentUpdateEvent("local-dev", model.AgentUpdateEvent{
+		Status:         "failed",
+		CurrentVersion: "1.0.14",
+		TargetVersion:  version.Version,
+		ManifestURL:    "https://agent-update:local-dev-secret@example.com/manifest.json",
+		Message:        "download failed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	commandLine := "python train.py --token=local-dev-secret --url=https://user:local-dev-secret@example.com/run"
+	username := "diagnostic-user"
+	if err := app.processes.Replace(model.ProcessBatch{
+		DeviceID:  "local-dev",
+		Timestamp: now,
+		Processes: []model.ProcessSnapshot{{
+			GPUID:           "gpu0",
+			PID:             4321,
+			ProcessName:     "python",
+			UsedMemoryBytes: 1024,
+			Username:        &username,
+			CommandLine:     &commandLine,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.RecordGuestVisit(GuestVisit{
+		At:          now,
+		RemoteIP:    "203.0.113.99",
+		UserAgent:   "diagnostic-agent-test",
+		Path:        "/guest",
+		Fingerprint: "fp-test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.meta.UpdateHeartbeat("local-dev", func(device *Device) {
+		device.LastRemoteAddr = "203.0.113.42:12345"
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := app.meta.RecordTelemetryError(
 		time.Now().UTC(),
 		time.Now().UTC().Add(time.Hour),
@@ -2155,8 +2254,14 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	if err := json.Unmarshal(raw, &report); err != nil {
 		t.Fatal(err)
 	}
+	if report.DiagnosticsSchemaVersion != diagnosticsSchemaVersion || report.DiagnosticsLevel != diagnosticsLevelStandard || report.Advanced != nil {
+		t.Fatalf("unexpected diagnostics level metadata: %+v", report)
+	}
 	if report.Product != version.Product || report.Version != version.Version || report.Runtime.GoVersion == "" || report.Storage.DatabaseSizeBytes == 0 || len(report.Devices) == 0 {
 		t.Fatalf("unexpected diagnostics report summary: %+v", report)
+	}
+	if report.HealthSummary.GPUCount != 1 || report.HealthSummary.ThrottledGPUCount != 1 || report.HealthSummary.PCIeDegradedGPUCount != 1 || len(report.MetricWindows) != 2 || len(report.AgentConfigs) != 1 {
+		t.Fatalf("expected expanded standard diagnostics fields, got health=%+v windows=%+v agent=%+v", report.HealthSummary, report.MetricWindows, report.AgentConfigs)
 	}
 	if report.Service.UpdateProxy != "http://redacted:redacted@127.0.0.1:7890" {
 		t.Fatalf("expected redacted update proxy, got %q", report.Service.UpdateProxy)
@@ -2167,8 +2272,40 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	if report.Update == nil || report.Update.Remote != "https://redacted:redacted@example.com/stlin256/GPU-Fleet.git" {
 		t.Fatalf("expected cached update status with redacted remote, got %+v", report.Update)
 	}
-	if len(report.Audit) == 0 || report.Audit[0].RemoteIP != "203.0.113.x" {
+	foundMaskedAuditIP := false
+	for _, event := range report.Audit {
+		if event.RemoteIP == "203.0.113.x" {
+			foundMaskedAuditIP = true
+			break
+		}
+	}
+	if !foundMaskedAuditIP {
 		t.Fatalf("expected masked audit remote IP, got %+v", report.Audit)
+	}
+	advancedDiagnostics := downloadZipFileContents(t, handler, cookie, "/api/v1/admin/diagnostics/download?level=advanced")
+	advancedRaw := advancedDiagnostics["diagnostics.json"]
+	advancedText := string(advancedRaw)
+	for _, forbidden := range []string{"local-dev-secret", "203.0.113.42", "203.0.113.99"} {
+		if strings.Contains(advancedText, forbidden) {
+			t.Fatalf("advanced diagnostics report leaked %q: %s", forbidden, advancedText)
+		}
+	}
+	var advancedReport diagnosticsReport
+	if err := json.Unmarshal(advancedRaw, &advancedReport); err != nil {
+		t.Fatal(err)
+	}
+	if advancedReport.DiagnosticsLevel != diagnosticsLevelAdvanced || advancedReport.Advanced == nil || len(advancedReport.Advanced.AgentConfigReports) != 1 || len(advancedReport.Advanced.ProcessDetails) != 1 || len(advancedReport.Advanced.GuestVisits) != 1 {
+		t.Fatalf("expected advanced diagnostics details, got %+v", advancedReport)
+	}
+	if !strings.Contains(advancedReport.Advanced.ProcessDetails[0].CommandLine, "--token=redacted") || strings.Contains(advancedReport.Advanced.AgentConfigReports[0].ServerURL, "local-dev-secret") {
+		t.Fatalf("expected advanced details to redact sensitive values, got process=%q server=%q", advancedReport.Advanced.ProcessDetails[0].CommandLine, advancedReport.Advanced.AgentConfigReports[0].ServerURL)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/diagnostics/download?level=unknown", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected unsupported diagnostics level to return 400, got %d", rec.Code)
 	}
 }
 

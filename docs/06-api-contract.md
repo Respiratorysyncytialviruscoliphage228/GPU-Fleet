@@ -194,7 +194,7 @@ POST /api/v1/admin/server-config
 POST /api/v1/admin/language
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
-GET  /api/v1/admin/diagnostics/download
+GET  /api/v1/admin/diagnostics/download?level=standard|advanced
 POST /api/v1/admin/guest
 GET  /api/v1/admin/guest/visits
 POST /api/v1/admin/restart
@@ -284,7 +284,7 @@ POST /api/v1/admin/password
 POST /api/v1/admin/server-config
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
-GET  /api/v1/admin/diagnostics/download
+GET  /api/v1/admin/diagnostics/download?level=standard|advanced
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/proxy
 POST /api/v1/admin/update/apply
@@ -302,7 +302,7 @@ POST /api/v1/admin/restart
 - `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，证书保存后服务端会调度自动重启，恢复后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
-- `GET /admin/diagnostics/download`：下载只读诊断 ZIP，包含 `diagnostics.json`，汇总版本、运行时、磁盘、指标分段、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。
+- `GET /admin/diagnostics/download`：下载只读诊断 ZIP，包含 `diagnostics.json`。默认 `level=standard`，也可传 `level=advanced`；无效 level 返回 `400`。标准包汇总 schema 版本、请求来源摘要、metadata 摘要、运行时、服务配置、遥测状态、磁盘、健康摘要、设备、GPU 扩展字段、1H/24H 指标窗口、进程数量、Agent 配置摘要、更新缓存和最近 100 条审计摘要。高级包在标准包基础上增加完整 Agent 配置报告、脱敏进程快照、访客记录、Web 会话时间摘要、指标分段清单、待展示更新通知和最近 500 条审计摘要。两类包都会脱敏 URL 凭据和远端 IP，且不会导出设备密钥、Web Cookie、HTTPS 私钥或完整 IP。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
 - `POST /admin/update/proxy`：保存或清空在线更新代理地址，仅接受 `http` 或 `https` 代理；诊断包中会脱敏代理凭据。
 - `POST /admin/update/apply`：默认仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。手动请求可传入 `{"force_clean": true}`，服务端会先执行 `git stash push -u` 保存当前工作区，再继续检查和更新；自动更新不会使用该参数。

@@ -82,9 +82,9 @@ Then upload the full certificate chain and private key from Settings. The server
 
 然后在设置页上传完整证书链和私钥。证书上传后服务端会调度重启，面板会等待服务恢复并显示完成提示。
 
-After setup, Settings can also download the database or diagnostics package, adjust the disk reserve, toggle the default-on 30-minute automatic update checks, configure the online update proxy, run a manual service restart, enable guest access, and open guest visit records.
+After setup, Settings can also download the database, export standard or advanced diagnostics packages, adjust the disk reserve, toggle the default-on 30-minute automatic update checks, configure the online update proxy, run a manual service restart, enable guest access, and open guest visit records.
 
-配置完成后，设置页还可以下载数据库或诊断包、调整磁盘预留空间、切换默认开启的 30 分钟自动更新检查、配置在线更新代理、手动重启服务、开启访客访问并查看访客记录。
+配置完成后，设置页还可以下载数据库、导出标准或高级诊断包、调整磁盘预留空间、切换默认开启的 30 分钟自动更新检查、配置在线更新代理、手动重启服务、开启访客访问并查看访客记录。
 
 ### Service Commands / 服务命令
 

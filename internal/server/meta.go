@@ -156,6 +156,18 @@ type WebSession struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+type metadataDiagnosticsSummary struct {
+	SchemaVersion       int       `json:"schema_version"`
+	CreatedAt           time.Time `json:"created_at"`
+	SetupComplete       bool      `json:"setup_complete"`
+	DeviceCount         int       `json:"device_count"`
+	WebSessionCount     int       `json:"web_session_count"`
+	GuestVisitCount     int       `json:"guest_visit_count"`
+	AuditEventCount     int       `json:"audit_event_count"`
+	LastProcessSetCount int       `json:"last_process_set_count"`
+	PendingUpdateNotice bool      `json:"pending_update_notice"`
+}
+
 type GuestVisit struct {
 	At          time.Time `json:"at"`
 	RemoteIP    string    `json:"remote_ip"`
@@ -640,6 +652,41 @@ func (s *MetadataStore) GuestVisits(limit int) []GuestVisit {
 	visits := append([]GuestVisit(nil), s.data.GuestVisits[start:]...)
 	sort.Slice(visits, func(i, j int) bool { return visits[i].At.After(visits[j].At) })
 	return visits
+}
+
+func (s *MetadataStore) WebSessions(limit int) []WebSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 300 {
+		limit = 100
+	}
+	sessions := make([]WebSession, 0, len(s.data.WebSessions))
+	for _, session := range s.data.WebSessions {
+		sessions = append(sessions, session)
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].LastSeenAt.After(sessions[j].LastSeenAt)
+	})
+	if len(sessions) > limit {
+		sessions = sessions[:limit]
+	}
+	return sessions
+}
+
+func (s *MetadataStore) DiagnosticsMetadataSummary() metadataDiagnosticsSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return metadataDiagnosticsSummary{
+		SchemaVersion:       s.data.SchemaVersion,
+		CreatedAt:           s.data.CreatedAt,
+		SetupComplete:       s.setupCompleteLocked(),
+		DeviceCount:         len(s.data.Devices),
+		WebSessionCount:     len(s.data.WebSessions),
+		GuestVisitCount:     len(s.data.GuestVisits),
+		AuditEventCount:     len(s.data.AuditEvents),
+		LastProcessSetCount: len(s.data.LastProcessSet),
+		PendingUpdateNotice: s.data.PendingUpdateNotice != nil,
+	}
 }
 
 func (s *MetadataStore) EnsureTelemetryInstallID() (string, error) {

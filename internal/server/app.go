@@ -72,6 +72,12 @@ type App struct {
 const webSessionTTL = 30 * 24 * time.Hour
 
 const (
+	diagnosticsSchemaVersion = 1
+	diagnosticsLevelStandard = "standard"
+	diagnosticsLevelAdvanced = "advanced"
+)
+
+const (
 	strictCSPHeader   = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
 	fallbackCSPHeader = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
 )
@@ -848,13 +854,43 @@ func (a *App) handleDiagnosticsDownload(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	report := a.diagnosticsReport(r)
+	level, err := diagnosticsLevelFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report := a.diagnosticsReport(r, level)
+	name := "gpufleet-diagnostics-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+	if level == diagnosticsLevelAdvanced {
+		name = "gpufleet-diagnostics-advanced-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "gpufleet-diagnostics-"+time.Now().UTC().Format("20060102-150405")+".zip"))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	archive := zip.NewWriter(w)
 	defer archive.Close()
 	if err := addJSONZipEntry(archive, "diagnostics.json", report); err != nil {
 		a.logger.Printf("diagnostics download failed: %v", err)
+	}
+}
+
+func diagnosticsLevelFromRequest(r *http.Request) (string, error) {
+	level := diagnosticsLevelStandard
+	if r != nil {
+		level = strings.TrimSpace(r.URL.Query().Get("level"))
+		if level == "" {
+			level = strings.TrimSpace(r.URL.Query().Get("type"))
+		}
+	}
+	if level == "" {
+		return diagnosticsLevelStandard, nil
+	}
+	switch strings.ToLower(level) {
+	case diagnosticsLevelStandard, "safe", "basic":
+		return diagnosticsLevelStandard, nil
+	case diagnosticsLevelAdvanced, "full":
+		return diagnosticsLevelAdvanced, nil
+	default:
+		return "", fmt.Errorf("unsupported diagnostics level %q", level)
 	}
 }
 
@@ -1077,13 +1113,14 @@ func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 	return response
 }
 
-func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
+func (a *App) diagnosticsReport(r *http.Request, level string) diagnosticsReport {
 	now := time.Now().UTC()
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
 	service := a.serviceStatus(r)
 	service.UpdateProxy = redactURLCredentials(service.UpdateProxy)
+	service.AgentUpdate = sanitizeAgentUpdatePolicy(service.AgentUpdate)
 	telemetry := a.diagnosticsTelemetry()
 
 	dataDir := a.config.DataDir
@@ -1111,16 +1148,29 @@ func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
 	storage.MetricSegmentNewest = segments.Newest
 	storage.MetricSegmentError = segments.Error
 
-	processes := a.processDiagnostics(a.processes.Latest("", ""))
-	devices := diagnosticsDevices(a.meta.ListDevices(), now)
+	processSnapshots := a.processes.Latest("", "")
+	processes := a.processDiagnostics(processSnapshots)
+	deviceRecords := a.meta.ListDevices()
+	devices := diagnosticsDevices(deviceRecords, now)
 	gpus := diagnosticsGPUs(a.metrics.Latest())
-
-	return diagnosticsReport{
-		Product:     version.Product,
-		Version:     version.Version,
-		Commit:      version.Commit,
-		BuildTime:   version.BuildTime,
-		GeneratedAt: now,
+	update := a.cachedDiagnosticsUpdateStatus()
+	auditLimit := 100
+	if level == diagnosticsLevelAdvanced {
+		auditLimit = 500
+	}
+	report := diagnosticsReport{
+		DiagnosticsSchemaVersion: diagnosticsSchemaVersion,
+		DiagnosticsLevel:         level,
+		Request:                  diagnosticsRequestFromHTTP(r),
+		Metadata:                 a.meta.DiagnosticsMetadataSummary(),
+		HealthSummary:            buildDiagnosticsHealthSummary(service, storage.Disk, devices, gpus, processes.TotalProcessCount, update, now),
+		MetricWindows:            a.diagnosticsMetricWindows(now),
+		AgentConfigs:             diagnosticsAgentConfigSummaries(deviceRecords),
+		Product:                  version.Product,
+		Version:                  version.Version,
+		Commit:                   version.Commit,
+		BuildTime:                version.BuildTime,
+		GeneratedAt:              now,
 		UptimeSeconds: func() int64 {
 			if a.startedAt.IsZero() {
 				return 0
@@ -1146,9 +1196,14 @@ func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
 		Devices:   devices,
 		GPUs:      gpus,
 		Processes: processes,
-		Update:    a.cachedDiagnosticsUpdateStatus(),
-		Audit:     diagnosticsAuditEvents(a.meta.RecentAuditEvents(100)),
+		Update:    update,
+		Audit:     diagnosticsAuditEvents(a.meta.RecentAuditEvents(auditLimit)),
 	}
+
+	if level == diagnosticsLevelAdvanced {
+		report.Advanced = a.advancedDiagnostics(deviceRecords, processSnapshots)
+	}
+	return report
 }
 
 func (a *App) diagnosticsTelemetry() diagnosticsTelemetry {
@@ -1166,6 +1221,46 @@ func (a *App) diagnosticsTelemetry() diagnosticsTelemetry {
 		LastSuccessAt:   state.LastSuccessAt,
 		NextReportAfter: state.NextReportAfter,
 		LastError:       lastError,
+	}
+}
+
+func diagnosticsRequestFromHTTP(r *http.Request) diagnosticsRequest {
+	if r == nil {
+		return diagnosticsRequest{}
+	}
+	return diagnosticsRequest{
+		Host:           limitText(strings.TrimSpace(r.Host), 200),
+		RemoteIP:       maskRemoteIP(r.RemoteAddr),
+		UserAgent:      limitText(strings.TrimSpace(r.UserAgent()), 240),
+		ForwardedProto: limitText(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), 40),
+		ForwardedHost:  limitText(strings.TrimSpace(r.Header.Get("X-Forwarded-Host")), 200),
+	}
+}
+
+func (a *App) diagnosticsMetricWindows(now time.Time) []diagnosticsMetricWindow {
+	windows := []int{1, 24}
+	out := make([]diagnosticsMetricWindow, 0, len(windows))
+	for _, hours := range windows {
+		window := diagnosticsMetricWindow{Hours: hours}
+		stats, err := a.metrics.Stats("", now.Add(-time.Duration(hours)*time.Hour))
+		if err != nil {
+			window.Error = limitText(err.Error(), 240)
+		} else {
+			window.Stats = stats
+		}
+		out = append(out, window)
+	}
+	return out
+}
+
+func (a *App) advancedDiagnostics(devices []Device, processes []StoredProcessSnapshot) *advancedDiagnostics {
+	return &advancedDiagnostics{
+		AgentConfigReports: diagnosticsAgentConfigReports(devices),
+		ProcessDetails:     diagnosticsProcessDetails(processes),
+		GuestVisits:        diagnosticsGuestVisits(a.meta.GuestVisits(100)),
+		WebSessions:        a.meta.WebSessions(100),
+		MetricSegments:     a.diagnosticsMetricSegmentFiles(),
+		PendingUpdate:      a.meta.PeekUpdateNotice(),
 	}
 }
 
@@ -1191,6 +1286,26 @@ func (a *App) metricSegmentDiagnostics() diagnosticsMetricSegments {
 	return out
 }
 
+func (a *App) diagnosticsMetricSegmentFiles() []diagnosticsMetricSegmentFile {
+	files, err := a.metrics.segmentFiles()
+	if err != nil {
+		return nil
+	}
+	out := make([]diagnosticsMetricSegmentFile, 0, len(files))
+	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		out = append(out, diagnosticsMetricSegmentFile{
+			Name:    filepath.Base(path),
+			Size:    info.Size(),
+			ModTime: info.ModTime().UTC(),
+		})
+	}
+	return out
+}
+
 func diagnosticsDevices(devices []Device, now time.Time) []diagnosticsDevice {
 	out := make([]diagnosticsDevice, 0, len(devices))
 	for _, device := range devices {
@@ -1199,19 +1314,24 @@ func diagnosticsDevices(devices []Device, now time.Time) []diagnosticsDevice {
 			status = "online"
 		}
 		out = append(out, diagnosticsDevice{
-			ID:           device.ID,
-			Alias:        device.Alias,
-			Enabled:      device.Enabled,
-			Status:       status,
-			Hostname:     device.Hostname,
-			OS:           device.OS,
-			OSVersion:    device.OSVersion,
-			AgentVersion: device.AgentVersion,
-			GPUCount:     device.GPUCount,
-			CreatedAt:    device.CreatedAt,
-			LastSeenAt:   device.LastSeenAt,
-			LastSampleAt: device.LastSampleAt,
-			LastError:    device.LastError,
+			ID:                   device.ID,
+			Alias:                device.Alias,
+			Enabled:              device.Enabled,
+			Status:               status,
+			Hostname:             device.Hostname,
+			OS:                   device.OS,
+			OSVersion:            device.OSVersion,
+			AgentVersion:         device.AgentVersion,
+			GPUCount:             device.GPUCount,
+			CreatedAt:            device.CreatedAt,
+			LastSeenAt:           device.LastSeenAt,
+			LastSeenAgeSeconds:   ageSeconds(now, device.LastSeenAt),
+			LastSampleAt:         device.LastSampleAt,
+			LastSampleAgeSeconds: ageSeconds(now, device.LastSampleAt),
+			LastError:            limitText(strings.TrimSpace(device.LastError), 240),
+			LastRemoteAddr:       maskRemoteIP(device.LastRemoteAddr),
+			ConfigReportAt:       configReportAt(device.ConfigReport),
+			UpdateState:          sanitizeAgentUpdateState(device.UpdateState),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -1238,8 +1358,11 @@ func diagnosticsGPUs(latest []StoredGPU) []diagnosticsGPU {
 		out = append(out, diagnosticsGPU{
 			DeviceID:              item.DeviceID,
 			GPUID:                 gpu.GPUID,
+			UUIDHash:              gpu.UUIDHash,
 			Timestamp:             item.Timestamp,
 			Name:                  gpu.Name,
+			DriverVersion:         gpu.DriverVersion,
+			VBIOSVersion:          gpu.VBIOSVersion,
 			MemoryTotalBytes:      gpu.MemoryTotalBytes,
 			MemoryUsedBytes:       gpu.MemoryUsedBytes,
 			MemoryFreeBytes:       gpu.MemoryFreeBytes,
@@ -1248,17 +1371,28 @@ func diagnosticsGPUs(latest []StoredGPU) []diagnosticsGPU {
 			UtilizationMemPercent: gpu.UtilizationMemPercent,
 			TemperatureCelsius:    gpu.TemperatureCelsius,
 			TemperatureMemCelsius: gpu.TemperatureMemCelsius,
+			TemperatureLimitC:     gpu.TemperatureLimitC,
 			PowerDrawWatts:        gpu.PowerDrawWatts,
 			PowerLimitWatts:       gpu.PowerLimitWatts,
+			PowerEnforcedLimitW:   gpu.PowerEnforcedLimitW,
 			FanSpeedPercent:       gpu.FanSpeedPercent,
 			GraphicsClockMHz:      gpu.GraphicsClockMHz,
 			MemoryClockMHz:        gpu.MemoryClockMHz,
 			SMClockMHz:            gpu.SMClockMHz,
+			VideoClockMHz:         gpu.VideoClockMHz,
 			PState:                gpu.PState,
 			PCIeLinkGeneration:    gpu.PCIeLinkGeneration,
 			PCIeLinkWidth:         gpu.PCIeLinkWidth,
 			PCIeLinkGenerationMax: gpu.PCIeLinkGenerationMax,
 			PCIeLinkWidthMax:      gpu.PCIeLinkWidthMax,
+			ComputeMode:           gpu.ComputeMode,
+			ComputeCapability:     gpu.ComputeCapability,
+			DisplayActive:         gpu.DisplayActive,
+			DisplayAttached:       gpu.DisplayAttached,
+			PersistenceMode:       gpu.PersistenceMode,
+			DriverModel:           gpu.DriverModel,
+			ECCModeCurrent:        gpu.ECCModeCurrent,
+			MIGModeCurrent:        gpu.MIGModeCurrent,
 			ClockThrottleReasons:  gpu.ClockThrottleReasons,
 			CollectionError:       gpu.CollectionError,
 		})
@@ -1296,6 +1430,91 @@ func (a *App) processDiagnostics(items []StoredProcessSnapshot) diagnosticsProce
 		}
 		return out.ByGPU[i].DeviceID < out.ByGPU[j].DeviceID
 	})
+	return out
+}
+
+func diagnosticsProcessDetails(items []StoredProcessSnapshot) []diagnosticsProcessDetail {
+	out := make([]diagnosticsProcessDetail, 0, len(items))
+	for _, item := range items {
+		process := item.Process
+		username := ""
+		if process.Username != nil {
+			username = limitText(strings.TrimSpace(*process.Username), 120)
+		}
+		commandLine := ""
+		if process.CommandLine != nil {
+			commandLine = redactCommandLine(*process.CommandLine)
+		}
+		out = append(out, diagnosticsProcessDetail{
+			DeviceID:        item.DeviceID,
+			GPUID:           process.GPUID,
+			Timestamp:       item.Timestamp,
+			PID:             process.PID,
+			ProcessName:     limitText(strings.TrimSpace(process.ProcessName), 160),
+			UsedMemoryBytes: process.UsedMemoryBytes,
+			Username:        username,
+			CommandLine:     commandLine,
+		})
+	}
+	return out
+}
+
+func diagnosticsAgentConfigSummaries(devices []Device) []diagnosticsAgentConfigSummary {
+	out := make([]diagnosticsAgentConfigSummary, 0, len(devices))
+	for _, device := range devices {
+		if device.ConfigReport == nil {
+			continue
+		}
+		report := sanitizeAgentConfigReport(device.ID, *device.ConfigReport)
+		out = append(out, diagnosticsAgentConfigSummary{
+			DeviceID:              device.ID,
+			AgentVersion:          report.AgentVersion,
+			CollectedAt:           report.CollectedAt,
+			Hostname:              report.Hostname,
+			OS:                    report.OS,
+			OSVersion:             report.OSVersion,
+			Architecture:          report.Architecture,
+			Runtime:               report.Runtime,
+			NvidiaSMICommand:      report.NvidiaSMICommand,
+			NvidiaSMIResolvedPath: report.NvidiaSMIResolvedPath,
+			NvidiaSMIVersion:      report.NvidiaSMIVersion,
+			SampleIntervalSeconds: report.SampleIntervalSeconds,
+			ConfigIntervalSeconds: report.ConfigIntervalSeconds,
+			ProcessesEnabled:      report.ProcessesEnabled,
+			GzipEnabled:           report.GzipEnabled,
+			GPUCount:              len(report.GPUs),
+			CollectionErrorCount:  len(report.CollectionErrors),
+		})
+	}
+	return out
+}
+
+func diagnosticsAgentConfigReports(devices []Device) []model.AgentConfigReport {
+	out := make([]model.AgentConfigReport, 0, len(devices))
+	for _, device := range devices {
+		if device.ConfigReport == nil {
+			continue
+		}
+		out = append(out, sanitizeAgentConfigReport(device.ID, *device.ConfigReport))
+	}
+	return out
+}
+
+func diagnosticsGuestVisits(visits []GuestVisit) []diagnosticsGuestVisit {
+	out := make([]diagnosticsGuestVisit, 0, len(visits))
+	for _, visit := range visits {
+		out = append(out, diagnosticsGuestVisit{
+			At:          visit.At,
+			RemoteIP:    maskRemoteIP(visit.RemoteIP),
+			UserAgent:   limitText(strings.TrimSpace(visit.UserAgent), 240),
+			Path:        limitText(strings.TrimSpace(visit.Path), 120),
+			Fingerprint: limitText(strings.TrimSpace(visit.Fingerprint), 80),
+			Language:    limitText(strings.TrimSpace(visit.Language), 80),
+			Platform:    limitText(strings.TrimSpace(visit.Platform), 80),
+			Screen:      limitText(strings.TrimSpace(visit.Screen), 80),
+			Timezone:    limitText(strings.TrimSpace(visit.Timezone), 80),
+		})
+	}
 	return out
 }
 
@@ -1344,6 +1563,242 @@ func diagnosticsAuditEvents(events []AuditEvent) []diagnosticsAuditEvent {
 		})
 	}
 	return out
+}
+
+func buildDiagnosticsHealthSummary(service serviceStatus, disk DiskStatus, devices []diagnosticsDevice, gpus []diagnosticsGPU, processCount int, update *diagnosticsUpdateStatus, now time.Time) diagnosticsHealthSummary {
+	summary := diagnosticsHealthSummary{
+		DeviceCount:                len(devices),
+		GPUCount:                   len(gpus),
+		TotalProcessCount:          processCount,
+		DiskStatus:                 disk.Status,
+		LegacyAgentAuthEnabled:     service.LegacyAgentAuth,
+		ServerUpdateAvailable:      update != nil && update.Available,
+		ServerUpdateFailed:         update != nil && update.Failed,
+		ServerRestartRequired:      service.RestartRequired,
+		ThermalHotThresholdCelsius: service.Energy.ThermalHotCelsius,
+		AgentTargetVersion:         version.Version,
+	}
+	for _, device := range devices {
+		if !device.Enabled {
+			summary.DisabledDeviceCount++
+			continue
+		}
+		if device.Status == "online" {
+			summary.OnlineDeviceCount++
+		} else {
+			summary.OfflineDeviceCount++
+		}
+		if agentVersionLess(device.AgentVersion, version.Version) {
+			summary.OutdatedAgentDeviceCount++
+		}
+		if agentVersionLess(device.AgentVersion, "0.1.9") {
+			summary.LegacyAuthCandidateDeviceCount++
+		}
+	}
+	for _, gpu := range gpus {
+		if gpu.UtilizationGPUPercent != nil && *gpu.UtilizationGPUPercent >= 50 {
+			summary.BusyGPUCount++
+		}
+		if gpu.TemperatureCelsius != nil {
+			if summary.HighestTemperatureCelsius == nil || *gpu.TemperatureCelsius > *summary.HighestTemperatureCelsius {
+				value := *gpu.TemperatureCelsius
+				summary.HighestTemperatureCelsius = &value
+			}
+			if service.Energy.ThermalHotCelsius > 0 && *gpu.TemperatureCelsius >= service.Energy.ThermalHotCelsius {
+				summary.HotGPUCount++
+			}
+		}
+		if gpu.PowerDrawWatts != nil {
+			summary.TotalPowerDrawWatts += *gpu.PowerDrawWatts
+		}
+		if hasClockThrottleReason(gpu.ClockThrottleReasons) {
+			summary.ThrottledGPUCount++
+		}
+		if isPCIeDegradedDiagnostics(gpu) {
+			summary.PCIeDegradedGPUCount++
+		}
+		if strings.TrimSpace(gpu.CollectionError) != "" {
+			summary.CollectionErrorGPUCount++
+		}
+		age := ageSeconds(now, gpu.Timestamp)
+		if age > 0 && (summary.NewestSampleAgeSeconds == 0 || age < summary.NewestSampleAgeSeconds) {
+			summary.NewestSampleAgeSeconds = age
+		}
+	}
+	if update != nil {
+		summary.ServerUpdateMessage = update.Message
+	}
+	return summary
+}
+
+func ageSeconds(now, at time.Time) int64 {
+	if at.IsZero() {
+		return 0
+	}
+	delta := now.Sub(at)
+	if delta < 0 {
+		return 0
+	}
+	return int64(delta.Seconds())
+}
+
+func configReportAt(report *model.AgentConfigReport) time.Time {
+	if report == nil {
+		return time.Time{}
+	}
+	return report.CollectedAt
+}
+
+func sanitizeAgentUpdatePolicy(policy model.AgentUpdatePolicy) model.AgentUpdatePolicy {
+	policy.Mode = limitText(strings.TrimSpace(policy.Mode), 40)
+	policy.DesiredVersion = limitText(strings.TrimSpace(policy.DesiredVersion), 80)
+	policy.ManifestURL = limitText(redactURLCredentials(policy.ManifestURL), 260)
+	policy.PublicKey = limitText(strings.TrimSpace(policy.PublicKey), 260)
+	policy.Rollout = limitText(strings.TrimSpace(policy.Rollout), 40)
+	policy.MaintenanceWindow = limitText(strings.TrimSpace(policy.MaintenanceWindow), 120)
+	return policy
+}
+
+func sanitizeAgentUpdateState(state *model.AgentUpdateState) *model.AgentUpdateState {
+	if state == nil {
+		return nil
+	}
+	out := *state
+	out.Status = limitText(strings.TrimSpace(out.Status), 80)
+	out.CurrentVersion = limitText(strings.TrimSpace(out.CurrentVersion), 80)
+	out.TargetVersion = limitText(strings.TrimSpace(out.TargetVersion), 80)
+	out.ManifestURL = limitText(redactURLCredentials(out.ManifestURL), 260)
+	out.ArtifactSHA256 = limitText(strings.TrimSpace(out.ArtifactSHA256), 96)
+	out.Message = limitText(strings.TrimSpace(out.Message), 240)
+	return &out
+}
+
+func redactCommandLine(value string) string {
+	value = limitText(strings.TrimSpace(value), 1200)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Fields(value)
+	sensitiveNext := false
+	for index, part := range parts {
+		if sensitiveNext {
+			parts[index] = "redacted"
+			sensitiveNext = false
+			continue
+		}
+		redactedURL := redactURLCredentials(part)
+		lower := strings.ToLower(redactedURL)
+		if commandLineTokenHasSecret(lower) {
+			if strings.Contains(redactedURL, "=") {
+				key, _, _ := strings.Cut(redactedURL, "=")
+				parts[index] = key + "=redacted"
+			} else {
+				parts[index] = redactedURL
+				sensitiveNext = true
+			}
+			continue
+		}
+		parts[index] = redactedURL
+	}
+	return limitText(strings.Join(parts, " "), 1200)
+}
+
+func commandLineTokenHasSecret(lower string) bool {
+	for _, marker := range []string{"password", "passwd", "secret", "token", "api-key", "apikey", "access-key", "private-key", "credential", "auth"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasClockThrottleReason(reason string) bool {
+	reason = strings.TrimSpace(reason)
+	if reason == "" || reason == "-" {
+		return false
+	}
+	lower := strings.ToLower(reason)
+	if lower == "none" || lower == "not active" || lower == "inactive" {
+		return false
+	}
+	if strings.HasPrefix(lower, "0x") {
+		for _, r := range lower[2:] {
+			if r != '0' {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+func isPCIeDegradedDiagnostics(gpu diagnosticsGPU) bool {
+	currentGen, currentGenOK := parseNumericLabel(gpu.PCIeLinkGeneration)
+	maxGen, maxGenOK := parseNumericLabel(gpu.PCIeLinkGenerationMax)
+	currentWidth, currentWidthOK := parseNumericLabel(gpu.PCIeLinkWidth)
+	maxWidth, maxWidthOK := parseNumericLabel(gpu.PCIeLinkWidthMax)
+	return (currentGenOK && maxGenOK && currentGen < maxGen) || (currentWidthOK && maxWidthOK && currentWidth < maxWidth)
+}
+
+func parseNumericLabel(value string) (float64, bool) {
+	value = strings.TrimSpace(value)
+	start := -1
+	end := -1
+	for index, r := range value {
+		if (r >= '0' && r <= '9') || r == '.' {
+			if start < 0 {
+				start = index
+			}
+			end = index + len(string(r))
+			continue
+		}
+		if start >= 0 {
+			break
+		}
+	}
+	if start < 0 || end <= start {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(value[start:end], 64)
+	return parsed, err == nil
+}
+
+func agentVersionLess(current, target string) bool {
+	currentParts, currentOK := parseSemverParts(current)
+	targetParts, targetOK := parseSemverParts(target)
+	if !currentOK || !targetOK {
+		return false
+	}
+	for index := 0; index < len(currentParts); index++ {
+		if currentParts[index] < targetParts[index] {
+			return true
+		}
+		if currentParts[index] > targetParts[index] {
+			return false
+		}
+	}
+	return false
+}
+
+func parseSemverParts(value string) ([3]int, bool) {
+	var out [3]int
+	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
+	if value == "" {
+		return out, false
+	}
+	value = strings.SplitN(value, "-", 2)[0]
+	parts := strings.Split(value, ".")
+	if len(parts) < 3 {
+		return out, false
+	}
+	for index := 0; index < 3; index++ {
+		parsed, err := strconv.Atoi(parts[index])
+		if err != nil || parsed < 0 {
+			return out, false
+		}
+		out[index] = parsed
+	}
+	return out, true
 }
 
 func redactURLCredentials(value string) string {
@@ -2436,21 +2891,37 @@ func (a *App) restartRequired(config ServiceConfig) bool {
 }
 
 type diagnosticsReport struct {
-	Product       string                   `json:"product"`
-	Version       string                   `json:"version"`
-	Commit        string                   `json:"commit"`
-	BuildTime     string                   `json:"build_time,omitempty"`
-	GeneratedAt   time.Time                `json:"generated_at"`
-	UptimeSeconds int64                    `json:"uptime_seconds"`
-	Runtime       diagnosticsRuntime       `json:"runtime"`
-	Service       serviceStatus            `json:"service"`
-	Telemetry     diagnosticsTelemetry     `json:"telemetry"`
-	Storage       diagnosticsStorage       `json:"storage"`
-	Devices       []diagnosticsDevice      `json:"devices"`
-	GPUs          []diagnosticsGPU         `json:"gpus"`
-	Processes     diagnosticsProcesses     `json:"processes"`
-	Update        *diagnosticsUpdateStatus `json:"update,omitempty"`
-	Audit         []diagnosticsAuditEvent  `json:"audit"`
+	DiagnosticsSchemaVersion int                             `json:"diagnostics_schema_version"`
+	DiagnosticsLevel         string                          `json:"diagnostics_level"`
+	Product                  string                          `json:"product"`
+	Version                  string                          `json:"version"`
+	Commit                   string                          `json:"commit"`
+	BuildTime                string                          `json:"build_time,omitempty"`
+	GeneratedAt              time.Time                       `json:"generated_at"`
+	UptimeSeconds            int64                           `json:"uptime_seconds"`
+	Request                  diagnosticsRequest              `json:"request"`
+	Metadata                 metadataDiagnosticsSummary      `json:"metadata"`
+	Runtime                  diagnosticsRuntime              `json:"runtime"`
+	Service                  serviceStatus                   `json:"service"`
+	Telemetry                diagnosticsTelemetry            `json:"telemetry"`
+	Storage                  diagnosticsStorage              `json:"storage"`
+	HealthSummary            diagnosticsHealthSummary        `json:"health_summary"`
+	Devices                  []diagnosticsDevice             `json:"devices"`
+	GPUs                     []diagnosticsGPU                `json:"gpus"`
+	MetricWindows            []diagnosticsMetricWindow       `json:"metric_windows"`
+	Processes                diagnosticsProcesses            `json:"processes"`
+	AgentConfigs             []diagnosticsAgentConfigSummary `json:"agent_config_summaries,omitempty"`
+	Update                   *diagnosticsUpdateStatus        `json:"update,omitempty"`
+	Audit                    []diagnosticsAuditEvent         `json:"audit"`
+	Advanced                 *advancedDiagnostics            `json:"advanced,omitempty"`
+}
+
+type diagnosticsRequest struct {
+	Host           string `json:"host,omitempty"`
+	RemoteIP       string `json:"remote_ip,omitempty"`
+	UserAgent      string `json:"user_agent,omitempty"`
+	ForwardedProto string `json:"forwarded_proto,omitempty"`
+	ForwardedHost  string `json:"forwarded_host,omitempty"`
 }
 
 type diagnosticsRuntime struct {
@@ -2499,26 +2970,34 @@ type diagnosticsMetricSegments struct {
 }
 
 type diagnosticsDevice struct {
-	ID           string    `json:"id"`
-	Alias        string    `json:"alias"`
-	Enabled      bool      `json:"enabled"`
-	Status       string    `json:"status"`
-	Hostname     string    `json:"hostname,omitempty"`
-	OS           string    `json:"os,omitempty"`
-	OSVersion    string    `json:"os_version,omitempty"`
-	AgentVersion string    `json:"agent_version,omitempty"`
-	GPUCount     int       `json:"gpu_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
-	LastSampleAt time.Time `json:"last_sample_at,omitempty"`
-	LastError    string    `json:"last_error,omitempty"`
+	ID                   string                  `json:"id"`
+	Alias                string                  `json:"alias"`
+	Enabled              bool                    `json:"enabled"`
+	Status               string                  `json:"status"`
+	Hostname             string                  `json:"hostname,omitempty"`
+	OS                   string                  `json:"os,omitempty"`
+	OSVersion            string                  `json:"os_version,omitempty"`
+	AgentVersion         string                  `json:"agent_version,omitempty"`
+	GPUCount             int                     `json:"gpu_count"`
+	CreatedAt            time.Time               `json:"created_at"`
+	LastSeenAt           time.Time               `json:"last_seen_at,omitempty"`
+	LastSeenAgeSeconds   int64                   `json:"last_seen_age_seconds,omitempty"`
+	LastSampleAt         time.Time               `json:"last_sample_at,omitempty"`
+	LastSampleAgeSeconds int64                   `json:"last_sample_age_seconds,omitempty"`
+	LastError            string                  `json:"last_error,omitempty"`
+	LastRemoteAddr       string                  `json:"last_remote_addr_masked,omitempty"`
+	ConfigReportAt       time.Time               `json:"config_report_at,omitempty"`
+	UpdateState          *model.AgentUpdateState `json:"agent_update_state,omitempty"`
 }
 
 type diagnosticsGPU struct {
 	DeviceID              string    `json:"device_id"`
 	GPUID                 string    `json:"gpu_id"`
+	UUIDHash              string    `json:"uuid_hash,omitempty"`
 	Timestamp             time.Time `json:"timestamp"`
 	Name                  string    `json:"name"`
+	DriverVersion         string    `json:"driver_version,omitempty"`
+	VBIOSVersion          string    `json:"vbios_version,omitempty"`
 	MemoryTotalBytes      uint64    `json:"memory_total_bytes"`
 	MemoryUsedBytes       uint64    `json:"memory_used_bytes"`
 	MemoryFreeBytes       uint64    `json:"memory_free_bytes,omitempty"`
@@ -2527,19 +3006,36 @@ type diagnosticsGPU struct {
 	UtilizationMemPercent *float64  `json:"utilization_memory_percent,omitempty"`
 	TemperatureCelsius    *float64  `json:"temperature_celsius,omitempty"`
 	TemperatureMemCelsius *float64  `json:"temperature_memory_celsius,omitempty"`
+	TemperatureLimitC     *float64  `json:"temperature_limit_celsius,omitempty"`
 	PowerDrawWatts        *float64  `json:"power_draw_watts,omitempty"`
 	PowerLimitWatts       *float64  `json:"power_limit_watts,omitempty"`
+	PowerEnforcedLimitW   *float64  `json:"power_enforced_limit_watts,omitempty"`
 	FanSpeedPercent       *float64  `json:"fan_speed_percent,omitempty"`
 	GraphicsClockMHz      *float64  `json:"graphics_clock_mhz,omitempty"`
 	MemoryClockMHz        *float64  `json:"memory_clock_mhz,omitempty"`
 	SMClockMHz            *float64  `json:"sm_clock_mhz,omitempty"`
+	VideoClockMHz         *float64  `json:"video_clock_mhz,omitempty"`
 	PState                string    `json:"pstate,omitempty"`
 	PCIeLinkGeneration    string    `json:"pcie_link_generation,omitempty"`
 	PCIeLinkWidth         string    `json:"pcie_link_width,omitempty"`
 	PCIeLinkGenerationMax string    `json:"pcie_link_generation_max,omitempty"`
 	PCIeLinkWidthMax      string    `json:"pcie_link_width_max,omitempty"`
+	ComputeMode           string    `json:"compute_mode,omitempty"`
+	ComputeCapability     string    `json:"compute_capability,omitempty"`
+	DisplayActive         string    `json:"display_active,omitempty"`
+	DisplayAttached       string    `json:"display_attached,omitempty"`
+	PersistenceMode       string    `json:"persistence_mode,omitempty"`
+	DriverModel           string    `json:"driver_model,omitempty"`
+	ECCModeCurrent        string    `json:"ecc_mode_current,omitempty"`
+	MIGModeCurrent        string    `json:"mig_mode_current,omitempty"`
 	ClockThrottleReasons  string    `json:"clock_throttle_reasons,omitempty"`
 	CollectionError       string    `json:"collection_error,omitempty"`
+}
+
+type diagnosticsMetricWindow struct {
+	Hours int        `json:"hours"`
+	Stats []GPUStats `json:"stats,omitempty"`
+	Error string     `json:"error,omitempty"`
 }
 
 type diagnosticsProcesses struct {
@@ -2552,6 +3048,91 @@ type diagnosticsProcessGPU struct {
 	GPUID        string    `json:"gpu_id"`
 	ProcessCount int       `json:"process_count"`
 	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
+}
+
+type diagnosticsProcessDetail struct {
+	DeviceID        string    `json:"device_id"`
+	GPUID           string    `json:"gpu_id"`
+	Timestamp       time.Time `json:"timestamp"`
+	PID             int       `json:"pid"`
+	ProcessName     string    `json:"process_name"`
+	UsedMemoryBytes uint64    `json:"used_memory_bytes"`
+	Username        string    `json:"username,omitempty"`
+	CommandLine     string    `json:"commandline,omitempty"`
+}
+
+type diagnosticsAgentConfigSummary struct {
+	DeviceID              string    `json:"device_id"`
+	AgentVersion          string    `json:"agent_version,omitempty"`
+	CollectedAt           time.Time `json:"collected_at,omitempty"`
+	Hostname              string    `json:"hostname,omitempty"`
+	OS                    string    `json:"os,omitempty"`
+	OSVersion             string    `json:"os_version,omitempty"`
+	Architecture          string    `json:"architecture,omitempty"`
+	Runtime               string    `json:"runtime,omitempty"`
+	NvidiaSMICommand      string    `json:"nvidia_smi_command,omitempty"`
+	NvidiaSMIResolvedPath string    `json:"nvidia_smi_resolved_path,omitempty"`
+	NvidiaSMIVersion      string    `json:"nvidia_smi_version,omitempty"`
+	SampleIntervalSeconds int       `json:"sample_interval_seconds,omitempty"`
+	ConfigIntervalSeconds int       `json:"config_interval_seconds,omitempty"`
+	ProcessesEnabled      bool      `json:"processes_enabled"`
+	GzipEnabled           bool      `json:"gzip_enabled"`
+	GPUCount              int       `json:"gpu_count"`
+	CollectionErrorCount  int       `json:"collection_error_count"`
+}
+
+type diagnosticsGuestVisit struct {
+	At          time.Time `json:"at"`
+	RemoteIP    string    `json:"remote_ip,omitempty"`
+	UserAgent   string    `json:"user_agent,omitempty"`
+	Path        string    `json:"path,omitempty"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	Language    string    `json:"language,omitempty"`
+	Platform    string    `json:"platform,omitempty"`
+	Screen      string    `json:"screen,omitempty"`
+	Timezone    string    `json:"timezone,omitempty"`
+}
+
+type diagnosticsMetricSegmentFile struct {
+	Name    string    `json:"name"`
+	Size    int64     `json:"size_bytes"`
+	ModTime time.Time `json:"mod_time"`
+}
+
+type diagnosticsHealthSummary struct {
+	DeviceCount                    int      `json:"device_count"`
+	OnlineDeviceCount              int      `json:"online_device_count"`
+	OfflineDeviceCount             int      `json:"offline_device_count"`
+	DisabledDeviceCount            int      `json:"disabled_device_count"`
+	GPUCount                       int      `json:"gpu_count"`
+	BusyGPUCount                   int      `json:"busy_gpu_count"`
+	HotGPUCount                    int      `json:"hot_gpu_count"`
+	ThrottledGPUCount              int      `json:"throttled_gpu_count"`
+	PCIeDegradedGPUCount           int      `json:"pcie_degraded_gpu_count"`
+	CollectionErrorGPUCount        int      `json:"collection_error_gpu_count"`
+	OutdatedAgentDeviceCount       int      `json:"outdated_agent_device_count"`
+	LegacyAuthCandidateDeviceCount int      `json:"legacy_auth_candidate_device_count"`
+	LegacyAgentAuthEnabled         bool     `json:"legacy_agent_auth_enabled"`
+	DiskStatus                     string   `json:"disk_status,omitempty"`
+	ServerUpdateAvailable          bool     `json:"server_update_available"`
+	ServerUpdateFailed             bool     `json:"server_update_failed"`
+	ServerUpdateMessage            string   `json:"server_update_message,omitempty"`
+	ServerRestartRequired          bool     `json:"server_restart_required"`
+	ThermalHotThresholdCelsius     float64  `json:"thermal_hot_threshold_celsius,omitempty"`
+	HighestTemperatureCelsius      *float64 `json:"highest_temperature_celsius,omitempty"`
+	TotalPowerDrawWatts            float64  `json:"total_power_draw_watts,omitempty"`
+	TotalProcessCount              int      `json:"total_process_count"`
+	NewestSampleAgeSeconds         int64    `json:"newest_sample_age_seconds,omitempty"`
+	AgentTargetVersion             string   `json:"agent_target_version,omitempty"`
+}
+
+type advancedDiagnostics struct {
+	AgentConfigReports []model.AgentConfigReport      `json:"agent_config_reports,omitempty"`
+	ProcessDetails     []diagnosticsProcessDetail     `json:"process_details,omitempty"`
+	GuestVisits        []diagnosticsGuestVisit        `json:"guest_visits,omitempty"`
+	WebSessions        []WebSession                   `json:"web_sessions,omitempty"`
+	MetricSegments     []diagnosticsMetricSegmentFile `json:"metric_segments,omitempty"`
+	PendingUpdate      *UpdateNotice                  `json:"pending_update_notice,omitempty"`
 }
 
 type diagnosticsUpdateStatus struct {

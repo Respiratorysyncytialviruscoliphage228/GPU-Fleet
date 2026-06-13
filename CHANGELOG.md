@@ -17,6 +17,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The GitHub Release workflow now publishes from a manually supplied fixed version, validates `internal/version`, frontend package metadata, and `CHANGELOG.md`, and supports full/core or explicit target matrices.
 - zh-CN: 新增从 `CHANGELOG.md` 指定版本条目生成 GitHub Release 发布说明的脚本，发布页会直接使用项目维护的双语 changelog 内容。
 - en-US: Added a script that extracts the selected version entry from `CHANGELOG.md` for GitHub Release notes, so releases use the maintained bilingual project changelog.
+- zh-CN: 诊断包导出新增标准/高级类型选择弹窗；标准包扩展 schema、请求、元数据、健康摘要、GPU 扩展字段、1H/24H 指标窗口、Agent 配置摘要和脱敏更新状态。
+- en-US: Diagnostics export now opens a standard/advanced package chooser; the standard package adds schema, request, metadata, health summary, expanded GPU fields, 1H/24H metric windows, Agent configuration summaries, and redacted update state.
+- zh-CN: 高级诊断包在标准包基础上增加完整 Agent 配置报告、脱敏进程快照、访客记录、Web 会话时间摘要、指标分段清单和待展示更新通知，同时继续排除密钥、Cookie、私钥和完整 IP。
+- en-US: The advanced diagnostics package adds full Agent configuration reports, redacted process snapshots, guest records, web session timing summaries, metric segment listings, and pending update notices while still excluding secrets, cookies, private keys, and full IP addresses.
 
 ## [1.0.14] - 2026-06-14
 

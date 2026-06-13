@@ -21,14 +21,14 @@ English documentation: [README-en.md](README-en.md)<br>
 - 看能耗：能耗页把现有功率、温度、利用率和限速原因汇总为 24H/7D/30D 耗电量、电费估算、热状态趋势、GPU 能耗排行、空转高耗和限速/高温诊断；它只做展示和估算，不下发功耗、风扇或频率控制。
 - 管设备：在 Web 面板注册设备、复制一次性密钥、改名、禁用/启用、删除和轮换密钥；这些操作只改变服务端认证记录，不会远程修改 Agent 本地配置。
 - 管服务：首次启动通过浏览器选择语言、设置密码、端口和可选 HTTPS 证书；设置页可改密码、语言、端口、证书、磁盘预留空间、服务端自动更新、Agent 更新策略、更新代理和旧版 Agent 兼容开关。
-- 做运维：服务端可下载数据库和只读诊断包，Linux 部署提供备份/恢复脚本；在线更新会校验官方仓库来源、upstream、工作区状态、fast-forward 路径和目标 commit，构建成功后才拉取并重启。
+- 做运维：服务端可下载数据库，并在导出诊断包时选择标准包或高级包；标准包用于日常排障，高级包额外包含脱敏后的 Agent 配置报告、进程快照、访客记录、Web 会话时间摘要和指标分段清单。Linux 部署提供备份/恢复脚本；在线更新会校验官方仓库来源、upstream、工作区状态、fast-forward 路径和目标 commit，构建成功后才拉取并重启。
 - 开访客：可以打开 `/guest` 脱敏总览给只读访客查看，访客看不到进程、统计、真实设备 ID、主机名、Agent 信息、驱动版本、GPU UUID、VBIOS 或任何管理接口。
 - 保持轻量：默认就是 Go 服务端、Go Agent、React 静态面板、gzip JSONL 分段指标和 JSON 元数据，不要求先搭 Prometheus、Grafana 或外部数据库。
 - 看生态：服务端默认启用匿名聚合遥测，只上报部署版本、服务端平台、活跃 Agent 数和活跃 GPU 数，用于 README 顶部的 GPU 数量徽章；不会上传主机名、设备 ID、GPU UUID、进程、用户名、密钥或访问地址。
 
 ## 当前状态
 
-GPUFleet 当前版本是 `1.0.15`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `1.0.15`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、标准/高级诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -481,7 +481,7 @@ POST /api/v1/admin/setup/apply
 POST /api/v1/admin/password
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
-GET  /api/v1/admin/diagnostics/download
+GET  /api/v1/admin/diagnostics/download?level=standard|advanced
 POST /api/v1/admin/language
 POST /api/v1/admin/server-config
 POST /api/v1/admin/guest
