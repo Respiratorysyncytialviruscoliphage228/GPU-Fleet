@@ -401,8 +401,8 @@ gpufleet_<version>_checksums.txt
 推送标签后 GitHub Actions 会构建并发布 Release：
 
 ```sh
-git tag v1.0.12
-git push origin v1.0.12
+git tag v1.0.13
+git push origin v1.0.13
 ```
 
 ## 服务端在线更新

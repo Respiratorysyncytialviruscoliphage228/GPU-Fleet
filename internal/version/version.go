@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "1.0.12"
+	Version   = "1.0.13"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,26 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "1.0.13",
+			Date:    "2026-06-13",
+			Title:   "发布 CI 审计修复",
+			TitleEN: "Release CI audit fixes",
+			Changed: []string{
+				"前端构建工具升级到 Vite 8 与新版 React 插件，并切换 TypeScript 模块解析以兼容新版 ESM 类型导出。",
+				"telemetry Worker CI 改为审计运行时依赖，避免 Wrangler 最新版仍携带的开发服务器 esbuild 审计项阻断发布；Worker 运行时代码保持零 npm 生产依赖。",
+			},
+			ChangedEN: []string{
+				"Upgraded the frontend toolchain to Vite 8 and the current React plugin, with TypeScript module resolution updated for modern ESM type exports.",
+				"Telemetry Worker CI now audits runtime dependencies so the latest Wrangler development-server esbuild audit finding does not block releases; the Worker runtime still has zero production npm dependencies.",
+			},
+			Fixed: []string{
+				"修复 main 分支 CI 中前端和 telemetry Worker 的 npm audit 作业失败。",
+			},
+			FixedEN: []string{
+				"Fixed failing frontend and telemetry Worker npm audit jobs on the main branch CI.",
+			},
+		},
 		{
 			Version: "1.0.12",
 			Date:    "2026-06-13",

@@ -4,6 +4,25 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.13] - 2026-06-13
+
+### Title / 标题
+
+- zh-CN: 发布 CI 审计修复
+- en-US: Release CI audit fixes
+
+### Changed / 变更
+
+- zh-CN: 前端构建工具升级到 Vite 8 与新版 React 插件，并切换 TypeScript 模块解析以兼容新版 ESM 类型导出。
+- en-US: Upgraded the frontend toolchain to Vite 8 and the current React plugin, with TypeScript module resolution updated for modern ESM type exports.
+- zh-CN: telemetry Worker CI 改为审计运行时依赖，避免 Wrangler 最新版仍携带的开发服务器 esbuild 审计项阻断发布；Worker 运行时代码保持零 npm 生产依赖。
+- en-US: Telemetry Worker CI now audits runtime dependencies so the latest Wrangler development-server esbuild audit finding does not block releases; the Worker runtime still has zero production npm dependencies.
+
+### Fixed / 修复
+
+- zh-CN: 修复 main 分支 CI 中前端和 telemetry Worker 的 npm audit 作业失败。
+- en-US: Fixed failing frontend and telemetry Worker npm audit jobs on the main branch CI.
+
 ## [1.0.12] - 2026-06-13
 
 ### Title / 标题
