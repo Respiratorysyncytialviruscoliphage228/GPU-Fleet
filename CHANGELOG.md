@@ -17,6 +17,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Agent automatic update now has a one-click official GitHub Release source that fills the official signed manifest URL and built-in Ed25519 public key while keeping custom signed sources in Advanced settings.
 - zh-CN: GitHub Release 工作流会额外上传原始 Agent 自更新二进制、签名 manifest 和公钥文件；manifest 由仓库 Secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY` 签名。
 - en-US: The GitHub Release workflow now also uploads raw Agent self-update binaries, a signed manifest, and a public-key file; the manifest is signed from the repository secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY`.
+- zh-CN: 登录页换上新的纸质艺术外衣：每次进入都会从 30 种印刷、票据、宣纸、网格与海报气质中随机抽取一张安静的入口纸面，访客入口与 GitHub 标记也被收进不喧哗的版式角落。
+- en-US: The login page now wears a new paper-art skin: each visit draws one of 30 print, ticket, rice-paper, grid, and poster-inspired surfaces, with guest access and the GitHub credit tucked into quiet corners of the composition.
 
 ### Fixed / 修复
 

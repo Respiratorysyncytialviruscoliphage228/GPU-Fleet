@@ -437,6 +437,11 @@ function portFromLocation() {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 8080;
 }
 
+function isLoginLabPath() {
+  const params = new URLSearchParams(window.location.search);
+  return window.location.pathname === '/login-lab' || params.has('login-lab');
+}
+
 function serviceFromOverview(data?: Overview): SetupStatus | undefined {
   if (!data?.service) return undefined;
   return {
@@ -454,6 +459,7 @@ function App() {
   const [language, setLanguageState] = useState<AppLanguage>(initialLanguage);
   const [updateNotice, setUpdateNotice] = useState<CompletedUpdateNotice | undefined>(() => takeCompletedUpdateNotice());
   const t = useMemo(() => makeTranslator(language), [language]);
+  const loginLab = isLoginLabPath();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -491,6 +497,7 @@ function App() {
   }
 
   useEffect(() => {
+    if (loginLab) return;
     let cancelled = false;
     const pending = readJSON<PendingUpdateNotice>(updatePendingKey);
     if (pending) {
@@ -540,30 +547,36 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loginLab]);
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
-      {authState === 'checking' && <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />}
-      {authState === 'setup' && (
-        <SetupWizard
-          mode="initial"
-          status={setupStatus}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onComplete={(nextLanguage) => {
-            setLanguage(nextLanguage);
+      {loginLab ? (
+        <LoginConceptLab theme={theme} onToggleTheme={toggleTheme} />
+      ) : (
+        <>
+          {authState === 'checking' && <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />}
+          {authState === 'setup' && (
+            <SetupWizard
+              mode="initial"
+              status={setupStatus}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              onComplete={(nextLanguage) => {
+                setLanguage(nextLanguage);
+                setAuthState('authenticated');
+              }}
+            />
+          )}
+          {authState === 'anonymous' && <Login onSuccess={() => {
             setAuthState('authenticated');
-          }}
-        />
+            void fetchServerUpdateNotice();
+          }} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
+          {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
+          {authState === 'guest' && <GuestDashboard theme={theme} onToggleTheme={toggleTheme} />}
+          <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
+        </>
       )}
-      {authState === 'anonymous' && <Login onSuccess={() => {
-        setAuthState('authenticated');
-        void fetchServerUpdateNotice();
-      }} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
-      {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
-      {authState === 'guest' && <GuestDashboard theme={theme} onToggleTheme={toggleTheme} />}
-      <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
     </I18nContext.Provider>
   );
 }
@@ -768,6 +781,8 @@ function SetupWizard({
 
 function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void; guestEnabled: boolean }) {
   const { t } = useI18n();
+  const [concept] = useState<LoginConcept>(() => randomLoginConcept());
+  const pointerMotion = usePaperPointerMotion();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -791,31 +806,463 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
   }
 
   return (
-    <main className="login-shell">
-      <form className="login-panel" onSubmit={submit}>
-        <div className="login-head">
-          <Brand />
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+    <main className="paper-login-shell">
+      <form
+        className={`poster-login poster-login-${concept.id} poster-ratio-app paper-login-form ${pointerMotion.ready ? 'is-pointer-ready' : ''}`}
+        onAnimationEnd={pointerMotion.onAnimationEnd}
+        onPointerLeave={pointerMotion.onPointerLeave}
+        onPointerMove={pointerMotion.onPointerMove}
+        onSubmit={submit}
+      >
+        <div className="poster-visual" aria-hidden="true">
+          <div className="poster-art">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
         </div>
-        <h1>{t('登录面板')}</h1>
-        <p>{t('登录后记住当前设备 30 天')}</p>
-        <label>
-          {t('密码')}
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" />
-        </label>
-        <button className="primary" disabled={loading}>
-          <LogIn size={18} />
-          {loading ? t('登录中') : t('登录')}
-        </button>
-        {guestEnabled && (
-          <button className="secondary action-button guest-login-button" type="button" onClick={enterGuest}>
-            <Activity size={18} />
-            {t('访客访问')}
+
+        <section className="poster-auth-card" aria-label={t('登录面板')}>
+          <div className="poster-auth-top">
+            <Brand />
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          </div>
+          <div className="poster-auth-copy">
+            <h4>{t('登录')}</h4>
+          </div>
+          <div className="poster-password-field">
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" aria-label={t('密码')} />
+          </div>
+          <button className="primary" disabled={loading}>
+            <LogIn size={18} />
+            {loading ? t('登录中') : t('登录')}
           </button>
-        )}
-        {error && <p className="error">{error}</p>}
+          {guestEnabled && (
+            <button className="secondary action-button poster-guest-button" type="button" onClick={enterGuest}>
+              <Activity size={18} />
+              {t('访客访问')}
+            </button>
+          )}
+          {error && <p className="error">{error}</p>}
+        </section>
+        <GitHubCredit />
       </form>
     </main>
+  );
+}
+
+type LoginConceptID = string;
+type LoginPreviewRatio = 'wide' | 'classic' | 'mobile';
+
+type LoginConcept = {
+  id: LoginConceptID;
+  name: string;
+  label: string;
+  headline: string;
+  deck: string;
+  issue: string;
+};
+
+const loginConcepts: LoginConcept[] = [
+  {
+    id: 'cover',
+    name: '封面纸',
+    label: 'Magazine Cover',
+    headline: '像一本技术杂志的封面，但只保留登录动作。',
+    deck: '大留白、封面线、温润纸张。',
+    issue: '01'
+  },
+  {
+    id: 'rice',
+    name: '宣纸',
+    label: 'Rice Paper',
+    headline: '柔和纤维质感，入口更安静。',
+    deck: '淡墨、低对比、呼吸感。',
+    issue: '02'
+  },
+  {
+    id: 'kraft',
+    name: '牛皮纸',
+    label: 'Kraft Stock',
+    headline: '工业、耐用、低调的纸板质感。',
+    deck: '适合偏工具感的入口。',
+    issue: '03'
+  },
+  {
+    id: 'vellum',
+    name: '描图纸',
+    label: 'Vellum',
+    headline: '半透明图纸感，把表单融入纸层。',
+    deck: '轻薄、冷静、技术感。',
+    issue: '04'
+  },
+  {
+    id: 'receipt',
+    name: '热敏票据',
+    label: 'Thermal Slip',
+    headline: '像一张窄幅凭条，极简直接。',
+    deck: '黑白、窄版、轻微颗粒。',
+    issue: '05'
+  },
+  {
+    id: 'letterpress',
+    name: '活版印刷',
+    label: 'Letterpress',
+    headline: '压印感和厚纸边缘，稳重有分量。',
+    deck: '适合偏品牌化的入口。',
+    issue: '06'
+  },
+  {
+    id: 'newsprint',
+    name: '报纸',
+    label: 'Newsprint',
+    headline: '新闻纸颗粒和窄栏排版。',
+    deck: '复古但保持克制。',
+    issue: '07'
+  },
+  {
+    id: 'notebook',
+    name: '方格笔记',
+    label: 'Grid Notebook',
+    headline: '网格纸和手册式登录。',
+    deck: '清晰、规整、工程感。',
+    issue: '08'
+  },
+  {
+    id: 'ticket',
+    name: '票根',
+    label: 'Ticket Stub',
+    headline: '像一张入场券，登录就是检票。',
+    deck: '边缘齿孔、短幅纸张。',
+    issue: '09'
+  },
+  {
+    id: 'envelope',
+    name: '安全信封',
+    label: 'Security Envelope',
+    headline: '安全信封纹理，强化私密感。',
+    deck: '浅蓝纹样、安静可信。',
+    issue: '10'
+  },
+  {
+    id: 'archive',
+    name: '档案卡',
+    label: 'Archive Card',
+    headline: '档案馆卡片，秩序感强。',
+    deck: '标签、索引线、旧纸。',
+    issue: '11'
+  },
+  {
+    id: 'parchment',
+    name: '羊皮卷',
+    label: 'Parchment',
+    headline: '旧纸张和墨色边缘。',
+    deck: '更戏剧化，但不放业务信息。',
+    issue: '12'
+  },
+  {
+    id: 'riso',
+    name: '孔版印刷',
+    label: 'Risograph',
+    headline: '轻微错版和高饱和油墨。',
+    deck: '艺术化更强的一版。',
+    issue: '13'
+  },
+  {
+    id: 'bauhaus',
+    name: '包豪斯',
+    label: 'Bauhaus',
+    headline: '几何、色块、明确的入口焦点。',
+    deck: '大胆但不杂乱。',
+    issue: '14'
+  },
+  {
+    id: 'swiss',
+    name: '瑞士排版',
+    label: 'Swiss Grid',
+    headline: '理性网格和高质量留白。',
+    deck: '最适合长期产品化。',
+    issue: '15'
+  },
+  {
+    id: 'ink',
+    name: '水墨留白',
+    label: 'Ink Wash',
+    headline: '一笔墨色和大面积空白。',
+    deck: '东方纸质感，安静克制。',
+    issue: '16'
+  },
+  {
+    id: 'origami',
+    name: '折纸',
+    label: 'Origami',
+    headline: '折痕构成空间，不再切成两块。',
+    deck: '轻盈、结构化。',
+    issue: '17'
+  },
+  {
+    id: 'blueprint',
+    name: '晒图纸',
+    label: 'Blueprint',
+    headline: '蓝晒图纸，但减少技术数据感。',
+    deck: '只留下纸纹和坐标线。',
+    issue: '18'
+  },
+  {
+    id: 'zine',
+    name: '独立杂志',
+    label: 'Indie Zine',
+    headline: '剪贴、复印、边框偏移。',
+    deck: '年轻、有手作感。',
+    issue: '19'
+  },
+  {
+    id: 'museum',
+    name: '展览海报',
+    label: 'Museum Poster',
+    headline: '像美术馆墙上的登录海报。',
+    deck: '大面积安静色块。',
+    issue: '20'
+  },
+  {
+    id: 'carbon',
+    name: '复写纸',
+    label: 'Carbon Copy',
+    headline: '蓝黑复写痕迹，带一点机械感。',
+    deck: '压痕、轻微重影。',
+    issue: '21'
+  },
+  {
+    id: 'linen',
+    name: '棉纸',
+    label: 'Linen Paper',
+    headline: '织纹纸张和柔和边缘。',
+    deck: '高级、温和、低刺激。',
+    issue: '22'
+  },
+  {
+    id: 'foil',
+    name: '烫金请柬',
+    label: 'Foil Card',
+    headline: '礼仪感和精致边框。',
+    deck: '适合更华丽但不喧闹的方向。',
+    issue: '23'
+  },
+  {
+    id: 'stamp',
+    name: '邮票边框',
+    label: 'Stamp Edge',
+    headline: '齿孔纸边和小幅画面。',
+    deck: '入口像一枚凭证。',
+    issue: '24'
+  },
+  {
+    id: 'map',
+    name: '航海图纸',
+    label: 'Chart Paper',
+    headline: '古地图纸纹和细线。',
+    deck: '方向感强，但不展示状态。',
+    issue: '25'
+  },
+  {
+    id: 'label',
+    name: '药盒标签',
+    label: 'Label Sheet',
+    headline: '精密标签纸，信息密度受控。',
+    deck: '干净、可信、工具属性强。',
+    issue: '26'
+  },
+  {
+    id: 'xerox',
+    name: '黑白影印',
+    label: 'Xerox',
+    headline: '高对比影印和纸边阴影。',
+    deck: '强烈、直接、低色彩。',
+    issue: '27'
+  },
+  {
+    id: 'memo',
+    name: '荧光便签',
+    label: 'Memo Pad',
+    headline: '便签纸的轻快和直接。',
+    deck: '更亲和，但仍然简洁。',
+    issue: '28'
+  },
+  {
+    id: 'emboss',
+    name: '浮雕纸',
+    label: 'Embossed',
+    headline: '浅浮雕纹样和厚卡纸。',
+    deck: '高级、低调、有质感。',
+    issue: '29'
+  },
+  {
+    id: 'gallery',
+    name: '画廊卡',
+    label: 'Gallery Card',
+    headline: '极简艺术卡片，品牌更突出。',
+    deck: '最干净的一版。',
+    issue: '30'
+  }
+];
+
+function randomLoginConcept() {
+  return loginConcepts[Math.floor(Math.random() * loginConcepts.length)] ?? loginConcepts[0];
+}
+
+function usePaperPointerMotion() {
+  const [ready, setReady] = useState(false);
+
+  function onAnimationEnd(event: React.AnimationEvent<HTMLElement>) {
+    if (event.currentTarget === event.target) {
+      window.setTimeout(() => setReady(true), 460);
+    }
+  }
+
+  function onPointerMove(event: React.PointerEvent<HTMLElement>) {
+    if (!ready || event.pointerType === 'touch') return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+    const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+    event.currentTarget.style.setProperty('--paper-x', x.toFixed(3));
+    event.currentTarget.style.setProperty('--paper-y', y.toFixed(3));
+  }
+
+  function onPointerLeave() {
+    // Keep the last settled offset so leaving the browser edge does not snap the paper back.
+  }
+
+  return { ready, onAnimationEnd, onPointerLeave, onPointerMove };
+}
+
+const loginPreviewRatios: Array<{ ratio: LoginPreviewRatio; title: string }> = [
+  { ratio: 'wide', title: '16:9 桌面' },
+  { ratio: 'classic', title: '4:3 控制台' },
+  { ratio: 'mobile', title: '9:16 移动端' }
+];
+
+function LoginConceptLab({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  const [conceptID, setConceptID] = useState<LoginConceptID>('editorial');
+  const [ratio, setRatio] = useState<LoginPreviewRatio>('wide');
+  const [guestEnabled, setGuestEnabled] = useState(true);
+  const concept = loginConcepts.find((item) => item.id === conceptID) ?? loginConcepts[0];
+
+  return (
+    <main className="login-lab-shell">
+      <header className="login-lab-header">
+        <div>
+          <Brand />
+          <span>登录页视觉备选</span>
+          <h1>单页预览</h1>
+          <p>预览区只展示登录前真正会出现的内容；业务数据、节点状态和说明文案都不进入登录画面。</p>
+        </div>
+        <div className="login-lab-actions">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <button className="secondary action-button" type="button" onClick={() => window.location.assign('/')}>
+            <LogIn size={17} />
+            返回登录
+          </button>
+        </div>
+      </header>
+
+      <section className="login-lab-stage">
+        <aside className="login-lab-controls" aria-label="登录页预览控制">
+          <div>
+            <span>{concept.label}</span>
+            <h2>{concept.name}</h2>
+            <p>{concept.headline}</p>
+            <p>{concept.deck}</p>
+          </div>
+
+          <div className="login-lab-control-group">
+            <strong>方案</strong>
+            <div className="login-lab-segments styles">
+              {loginConcepts.map((item) => (
+                <button className={item.id === conceptID ? 'active' : ''} type="button" onClick={() => setConceptID(item.id)} key={item.id} title={`${item.issue} ${item.name}`}>
+                  <span>{item.issue}</span>
+                  <small>{item.name}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="login-lab-control-group">
+            <strong>屏幕比例</strong>
+            <div className="login-lab-segments ratio">
+              {loginPreviewRatios.map((item) => (
+                <button className={item.ratio === ratio ? 'active' : ''} type="button" onClick={() => setRatio(item.ratio)} key={item.ratio}>
+                  {item.title}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="login-lab-switch">
+            <input checked={guestEnabled} type="checkbox" onChange={(event) => setGuestEnabled(event.target.checked)} />
+            <span>访客入口</span>
+          </label>
+        </aside>
+
+        <article className={`login-preview-frame ratio-${ratio}`}>
+          <LoginConceptPreview concept={concept} ratio={ratio} guestEnabled={guestEnabled} />
+        </article>
+      </section>
+    </main>
+  );
+}
+
+function LoginConceptPreview({ concept, ratio, guestEnabled }: { concept: LoginConcept; ratio: LoginPreviewRatio; guestEnabled: boolean }) {
+  const pointerMotion = usePaperPointerMotion();
+
+  return (
+    <div
+      className={`poster-login poster-login-${concept.id} poster-ratio-${ratio} ${pointerMotion.ready ? 'is-pointer-ready' : ''}`}
+      onAnimationEnd={pointerMotion.onAnimationEnd}
+      onPointerLeave={pointerMotion.onPointerLeave}
+      onPointerMove={pointerMotion.onPointerMove}
+    >
+      <section className="poster-visual" aria-label={`${concept.name} visual preview`}>
+        <div className="poster-art" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      </section>
+
+      <section className="poster-auth-card" aria-label="Login preview">
+        <div className="poster-auth-top">
+          <Brand />
+        </div>
+        <div className="poster-auth-copy">
+          <h4>登录</h4>
+        </div>
+        <div className="poster-password-field">
+          <input readOnly type="password" value="previewpass" aria-label="密码预览" />
+        </div>
+        <button className="primary" type="button">
+          <LogIn size={18} />
+          登录
+        </button>
+        {guestEnabled ? (
+          <button className="secondary action-button poster-guest-button" type="button">
+            <Activity size={18} />
+            访客访问
+          </button>
+        ) : null}
+      </section>
+      <GitHubCredit />
+    </div>
+  );
+}
+
+function GitHubCredit() {
+  return (
+    <a className="paper-github-credit" href="https://github.com/stlin256/GPU-Fleet" target="_blank" rel="noreferrer" aria-label="GitHub stlin256 GPU-Fleet">
+      <Github size={14} />
+      <span>stlin256</span>
+    </a>
   );
 }
 
