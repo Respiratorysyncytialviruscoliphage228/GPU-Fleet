@@ -3365,7 +3365,7 @@ input[type="file"] {
   background:
     linear-gradient(90deg, transparent 0 18%, color-mix(in srgb, var(--poster-accent) 30%, transparent) 18% 19%, transparent 19% 74%, color-mix(in srgb, var(--poster-accent-2) 24%, transparent) 74% 76%, transparent 76%),
     linear-gradient(180deg, transparent 0 20%, color-mix(in srgb, var(--poster-accent) 18%, transparent) 20% 21%, transparent 21% 82%, color-mix(in srgb, var(--poster-accent-2) 16%, transparent) 82% 84%, transparent 84%);
-  animation: login-art-sweep 6200ms var(--ease) 1050ms infinite alternate;
+  animation: login-art-sweep 1180ms var(--ease) 720ms both;
 }
 
 .poster-art span:nth-child(2) {
@@ -3377,7 +3377,8 @@ input[type="file"] {
   background:
     repeating-linear-gradient(90deg, color-mix(in srgb, var(--poster-ink) 8%, transparent) 0 2px, transparent 2px 18px),
     linear-gradient(180deg, color-mix(in srgb, var(--poster-accent-2) 12%, transparent), transparent);
-  animation: login-art-rise 5400ms var(--ease) 820ms infinite alternate;
+  transform: translateY(0);
+  animation: login-art-rise 1200ms var(--ease) 820ms both;
 }
 
 .poster-art span:nth-child(3) {
@@ -3764,7 +3765,7 @@ input[type="file"] {
 @keyframes login-visual-in {
   0% { opacity: 0; transform: rotate(var(--poster-tilt)) translateX(-18px) scale(.986); clip-path: inset(0 32% 0 0); }
   72% { opacity: 1; transform: rotate(var(--poster-tilt)) translateX(1px) scale(1.002); clip-path: inset(0); }
-  100% { opacity: 1; transform: rotate(var(--poster-tilt)) translate3d(calc(var(--paper-x) * -8px), calc(var(--paper-y) * -5px), 0) scale(1); clip-path: inset(0); }
+  100% { opacity: 1; transform: rotate(var(--poster-tilt)) translate3d(0, 0, 0) scale(1); clip-path: inset(0); }
 }
 
 @keyframes login-card-in {
@@ -3784,13 +3785,13 @@ input[type="file"] {
 }
 
 @keyframes login-art-sweep {
-  from { transform: skewX(-18deg) translateX(13%); opacity: .58; }
-  to { transform: skewX(-18deg) translateX(24%); opacity: .9; }
+  from { transform: rotate(-10deg) translateX(3%); opacity: .42; }
+  to { transform: rotate(-10deg) translateX(8%); opacity: .92; }
 }
 
 @keyframes login-art-rise {
-  from { transform: translateY(8px); opacity: .46; }
-  to { transform: translateY(-8px); opacity: .82; }
+  from { transform: translateY(10px); opacity: .38; }
+  to { transform: translateY(0); opacity: .86; }
 }
 
 @keyframes view-enter {
