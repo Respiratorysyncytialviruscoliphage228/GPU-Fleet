@@ -13,8 +13,8 @@ Download the matching `gpufleet-server_<version>_linux_<arch>.tar.gz`, extract i
 下载匹配的 `gpufleet-server_<version>_linux_<arch>.tar.gz`，解压后以 root 执行安装脚本。发布包包含预编译服务端二进制，因此服务器不需要安装 Go。
 
 ```sh
-tar -xzf gpufleet-server_1.0.15_linux_amd64.tar.gz
-cd gpufleet-server_1.0.15_linux_amd64
+tar -xzf gpufleet-server_1.0.16_linux_amd64.tar.gz
+cd gpufleet-server_1.0.16_linux_amd64
 
 ADDR="0.0.0.0:9008" \
 DATA_DIR="/var/lib/gpufleet" \
@@ -233,9 +233,9 @@ Use an elevated PowerShell window. Prefer a release package that contains `bin\g
   -QueueMaxMB 128
 ```
 
-The Windows installer validates the Agent version, optionally runs a one-shot upload preflight, writes credentials to `C:\ProgramData\GPUFleet\agent.env` with restricted ACLs, and creates an automatic scheduled task named `GPUFleetAgent`. Logs are written to `C:\ProgramData\GPUFleet\logs\agent.log`. Older Windows Service installs with the same name are stopped and removed during installation.
+The Windows installer validates the Agent version, optionally runs a one-shot upload preflight, writes credentials to `C:\ProgramData\GPUFleet\agent.env` with restricted ACLs, and creates an automatic scheduled task named `GPUFleetAgent`. The task starts at boot, retries failures, and also has a Windows NetworkProfile reconnect trigger so it can recover if the task is no longer running after a network drop. Logs are written to `C:\ProgramData\GPUFleet\logs\agent.log`. Older Windows Service installs with the same name are stopped and removed during installation.
 
-Windows 安装脚本会校验 Agent 版本，可选执行一次性上报预检，把凭据写入带受限 ACL 的 `C:\ProgramData\GPUFleet\agent.env`，并创建名为 `GPUFleetAgent` 的开机自启计划任务。日志写入 `C:\ProgramData\GPUFleet\logs\agent.log`。同名旧 Windows Service 会在安装时停止并删除。
+Windows 安装脚本会校验 Agent 版本，可选执行一次性上报预检，把凭据写入带受限 ACL 的 `C:\ProgramData\GPUFleet\agent.env`，并创建名为 `GPUFleetAgent` 的计划任务。该任务会开机启动、失败重试，并带 Windows NetworkProfile 网络重连触发；如果断网后任务不再运行，网络恢复时会再次尝试启动。日志写入 `C:\ProgramData\GPUFleet\logs\agent.log`。同名旧 Windows Service 会在安装时停止并删除。
 
 Task and log commands:
 
@@ -366,13 +366,13 @@ Build explicit targets:
 .\scripts\build-release.ps1 -Targets windows/amd64,linux/amd64,linux/arm64
 ```
 
-Publish a GitHub Release by manually running the `Release` workflow after the version is fixed:
+Publish a GitHub Release by manually running the `Release` workflow after the version is fixed. The workflow also uploads raw Agent self-update binaries, `gpufleet-agent-manifest.json`, and `gpufleet-agent-update-public-key.txt`; configure the GitHub repository secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY` before the first signed Agent release.
 
-固定版本号后，手动运行 `Release` 工作流发布 GitHub Release：
+固定版本号后，手动运行 `Release` 工作流发布 GitHub Release。工作流还会上传原始 Agent 自更新二进制、`gpufleet-agent-manifest.json` 和 `gpufleet-agent-update-public-key.txt`；首次发布签名 Agent 更新前，需要先配置 GitHub 仓库 Secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY`。
 
 ```text
 Actions -> Release -> Run workflow
-version: 1.0.15
+version: 1.0.16
 target_set: full
 targets: empty, or windows/amd64,linux/amd64,linux/arm64
 ```

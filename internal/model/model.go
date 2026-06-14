@@ -138,6 +138,7 @@ type AgentGPUConfig struct {
 }
 
 type AgentUpdatePolicy struct {
+	Source                string `json:"source,omitempty"`
 	Enabled               bool   `json:"enabled"`
 	Mode                  string `json:"mode,omitempty"`
 	DesiredVersion        string `json:"desired_version,omitempty"`

@@ -27,6 +27,7 @@ agent-queue/
 .env.*
 *.local
 config.local.*
+.secrets/
 
 # Node
 node_modules/

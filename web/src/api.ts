@@ -184,6 +184,7 @@ export type EnergySummaryResponse = {
 };
 
 export type AgentUpdatePolicy = {
+  source?: 'official_github' | 'custom' | string;
   enabled: boolean;
   mode?: 'notify' | 'patch' | 'minor' | string;
   desired_version?: string;

@@ -80,13 +80,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "create queue: %v\n", err)
 		os.Exit(1)
 	}
+	clientTimeout := 10 * time.Second
 	runner := agent.Runner{
 		Client: &agent.Client{
 			ServerURL: serverURL,
 			DeviceID:  deviceID,
 			Secret:    secret,
-			Timeout:   10 * time.Second,
+			Timeout:   clientTimeout,
 			UseGzip:   gzipBody,
+			HTTP:      agent.NewHTTPClient(clientTimeout),
 		},
 		Collector:           agent.NewCollector(nvidiaSMI, 5*time.Second),
 		Queue:               queue,

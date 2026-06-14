@@ -4,6 +4,25 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.16] - 2026-06-14
+
+### Title / 标题
+
+- zh-CN: 官方 Agent 一键更新源
+- en-US: Official one-click Agent update source
+
+### Added / 新增
+
+- zh-CN: Agent 自动更新新增官方 GitHub Release 一键源，默认填充官方签名 manifest URL 和内置 Ed25519 公钥，同时保留高级设置中的自定义签名源。
+- en-US: Agent automatic update now has a one-click official GitHub Release source that fills the official signed manifest URL and built-in Ed25519 public key while keeping custom signed sources in Advanced settings.
+- zh-CN: GitHub Release 工作流会额外上传原始 Agent 自更新二进制、签名 manifest 和公钥文件；manifest 由仓库 Secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY` 签名。
+- en-US: The GitHub Release workflow now also uploads raw Agent self-update binaries, a signed manifest, and a public-key file; the manifest is signed from the repository secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY`.
+
+### Fixed / 修复
+
+- zh-CN: 增强 Agent 断网恢复能力：HTTP 上传在网络/超时错误后会丢弃空闲连接，本地队列会正确保留可重试失败并跳过永久坏批次，Windows 计划任务新增网络重连恢复触发和更高失败重启次数。
+- en-US: Improved Agent recovery after network loss: HTTP uploads now drop idle connections after network/timeout errors, the local queue keeps retryable failures while skipping permanently bad batches, and the Windows scheduled task adds a network reconnect recovery trigger plus a higher failure restart count.
+
 ## [1.0.15] - 2026-06-14
 
 ### Title / 标题

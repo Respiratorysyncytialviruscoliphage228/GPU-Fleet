@@ -28,7 +28,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 ## 当前状态
 
-GPUFleet 当前版本是 `1.0.15`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、标准/高级诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `1.0.16`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、标准/高级诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -273,7 +273,7 @@ Windows 计划任务（推荐使用发布包，无需在客户端安装 Go）：
   -Secret "replace-with-device-secret"
 ```
 
-安装脚本会校验 `gpufleet-agent.exe` 版本，默认执行一次性上报预检，把凭据写入 `C:\ProgramData\GPUFleet\agent.env`，并创建名为 `GPUFleetAgent` 的开机自启计划任务。日志位置：
+安装脚本会校验 `gpufleet-agent.exe` 版本，默认执行一次性上报预检，把凭据写入 `C:\ProgramData\GPUFleet\agent.env`，并创建名为 `GPUFleetAgent` 的计划任务。任务会开机启动、失败重试，并在 Windows 网络重新连接后尝试恢复。日志位置：
 
 ```powershell
 Get-Content "C:\ProgramData\GPUFleet\logs\agent.log" -Tail 100
@@ -399,11 +399,11 @@ gpufleet_<version>_checksums.txt
 .\scripts\build-release.ps1 -Targets windows/amd64,linux/amd64,linux/arm64
 ```
 
-固定版本号后，在 GitHub Actions 手动运行 `Release` 工作流。工作流会校验 `internal/version`、`web/package.json`、`web/package-lock.json` 和 `CHANGELOG.md` 中的版本一致性，根据所选目标矩阵构建 Server/Agent 包，并用对应 changelog 条目生成 GitHub Release 发布说明：
+固定版本号后，在 GitHub Actions 手动运行 `Release` 工作流。工作流会校验 `internal/version`、`web/package.json`、`web/package-lock.json` 和 `CHANGELOG.md` 中的版本一致性，根据所选目标矩阵构建 Server/Agent 包、原始 Agent 自更新二进制、签名 manifest 和公钥文件，并用对应 changelog 条目生成 GitHub Release 发布说明。首次使用前需要在 GitHub 仓库 Secrets 中配置 `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY`，值为 base64 Ed25519 私钥 seed。
 
 ```text
 Actions -> Release -> Run workflow
-version: 1.0.15
+version: 1.0.16
 target_set: full
 targets: 留空，或 windows/amd64,linux/amd64,linux/arm64
 ```
@@ -412,7 +412,7 @@ targets: 留空，或 windows/amd64,linux/amd64,linux/arm64
 
 服务端在线更新默认开启，每 30 分钟检查当前 Git 上游是否有可 fast-forward 的新提交；存在更新时会自动构建、拉取并调度服务端重启。管理员也可以在设置页手动检查并点击“更新”。该机制只操作服务端自身仓库和当前服务端进程，不会连接或修改任何客户端 Agent。更新状态会缓存 1 小时，打开设置页时优先显示缓存；管理员仍可点击检查更新立即刷新。更新支持配置代理地址，并在手动执行前显示全屏模糊确认弹窗。替换服务端二进制前会保留上一版 `.bak` 文件，重启脚本在替换或启动阶段失败时会尽量恢复旧二进制。
 
-Agent 更新是独立的 pull 模型：设置页默认面向普通用户只保留 Agent 自动更新开关、更新范围摘要和保存按钮；签名 manifest URL 与 Ed25519 公钥可由部署环境通过 `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`、`GPUFLEET_AGENT_UPDATE_PUBLIC_KEY` 或同名启动参数预置，必要时再在高级设置中覆盖目标版本、更新模式、检查间隔和并发上限。目标版本留空时表示按更新模式选择允许的最新补丁。Agent 通过 HMAC 拉取策略，自行下载 manifest 和 artifact，验证签名与 sha256 后只替换自己的二进制，并把检查、失败、应用或回滚事件上报给服务端审计。服务端不会向 Agent 下发 shell 命令。
+Agent 更新是独立的 pull 模型：设置页默认使用官方 GitHub Release 更新源，普通用户只需开启 Agent 自动更新并保存；高级设置仍可切换为自定义签名源，或覆盖目标版本、更新模式、检查间隔和并发上限。部署环境也可以通过 `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`、`GPUFLEET_AGENT_UPDATE_PUBLIC_KEY` 或同名启动参数预置自定义默认源。目标版本留空时表示按更新模式选择允许的最新补丁。Agent 通过 HMAC 拉取策略，自行下载 manifest 和 artifact，验证签名与 sha256 后只替换自己的二进制，并把检查、失败、应用或回滚事件上报给服务端审计。服务端不会向 Agent 下发 shell 命令。
 
 ```mermaid
 sequenceDiagram
@@ -531,7 +531,7 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
-  --expected-version v1.0.15 `
+  --expected-version v1.0.16 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true

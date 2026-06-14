@@ -53,9 +53,9 @@ $section
 
 ## Release Assets / 发布包
 
-This release attaches prebuilt Server and Agent packages for the selected target matrix, plus $checksumName for SHA256 verification.
+This release attaches prebuilt Server and Agent packages for the selected target matrix, raw Agent self-update binaries, a signed Agent update manifest, the Agent update public key, plus $checksumName for SHA256 verification.
 
-本次发布会附加所选目标矩阵的 Server 与 Agent 预编译包，并提供 $checksumName 用于 SHA256 校验。
+本次发布会附加所选目标矩阵的 Server 与 Agent 预编译包、原始 Agent 自更新二进制、签名 Agent 更新 manifest、Agent 更新公钥，并提供 $checksumName 用于 SHA256 校验。
 "@
 
 if ($OutputPath) {

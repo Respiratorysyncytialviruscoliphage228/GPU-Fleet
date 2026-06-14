@@ -89,7 +89,14 @@ func (q *SampleQueue) Flush(client *Client, maxBatches int) error {
 	sent := 0
 	for sent < maxBatches {
 		if err := client.PostSamples(batches[sent]); err != nil {
-			return q.rewriteLocked(batches[sent:])
+			if permanentQueueUploadError(err) {
+				sent++
+				continue
+			}
+			if rewriteErr := q.rewriteLocked(batches[sent:]); rewriteErr != nil {
+				return errors.Join(err, rewriteErr)
+			}
+			return err
 		}
 		sent++
 	}

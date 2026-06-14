@@ -97,6 +97,28 @@ jobs:
         shell: pwsh
         run: ./scripts/get-changelog-release-notes.ps1 -Version $env:RELEASE_VERSION -OutputPath dist/release-notes.md
 
+      - name: Generate signed Agent update manifest
+        shell: pwsh
+        env:
+          GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY: ${{ secrets.GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY }}
+        run: |
+          if (!$env:GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY) {
+            throw "Missing GitHub secret GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY. It must contain the base64 Ed25519 private key seed for Agent update manifests."
+          }
+          $releaseBaseUrl = "https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG"
+          go run ./cmd/gpufleet-agent-manifest `
+            -version $env:RELEASE_VERSION `
+            -assets-dir dist/release `
+            -release-base-url $releaseBaseUrl `
+            -output dist/release/gpufleet-agent-manifest.json `
+            -public-key-output dist/release/gpufleet-agent-update-public-key.txt
+          $checksumPath = "dist/release/gpufleet_$env:RELEASE_VERSION`_checksums.txt"
+          foreach ($asset in @("gpufleet-agent-manifest.json", "gpufleet-agent-update-public-key.txt")) {
+            $assetPath = Join-Path "dist/release" $asset
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToLowerInvariant()
+            Add-Content -LiteralPath $checksumPath -Value "$hash  $asset" -Encoding ASCII
+          }
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:

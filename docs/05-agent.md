@@ -4,7 +4,7 @@
 
 Agent 是一个跨平台单文件程序：
 
-- Windows：Windows Service。
+- Windows：计划任务，开机启动，并在 Windows NetworkProfile 连接事件后尝试恢复。
 - Linux：systemd service。
 - 开发调试：前台命令行运行。
 
@@ -66,7 +66,9 @@ Agent 批量上报 JSON：
 
 ## 更新策略
 
-Agent 更新采用 pull 模型。设置页默认只呈现 Agent 自动更新开关、更新范围摘要和保存按钮；服务端可通过 `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`、`GPUFLEET_AGENT_UPDATE_PUBLIC_KEY` 或同名启动参数预置签名更新源，目标版本、更新模式、签名源、检查间隔和并发上限收在高级设置中。目标版本留空时表示按更新模式选择允许的最新补丁或小版本。Agent 使用 HMAC 从 `/api/v1/agent/update-policy` 拉取策略，并把检查、跳过、成功、失败或回滚事件上报到 `/api/v1/agent/update-events`。
+Agent 更新采用 pull 模型。设置页默认使用官方 GitHub Release 更新源，普通用户只需开启 Agent 自动更新并保存；高级设置仍可切换自定义签名源，或覆盖目标版本、更新模式、检查间隔和并发上限。服务端也可通过 `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`、`GPUFLEET_AGENT_UPDATE_PUBLIC_KEY` 或同名启动参数预置自定义默认源。目标版本留空时表示按更新模式选择允许的最新补丁或小版本。Agent 使用 HMAC 从 `/api/v1/agent/update-policy` 拉取策略，并把检查、跳过、成功、失败或回滚事件上报到 `/api/v1/agent/update-events`。
+
+官方 GitHub Release 工作流会额外上传原始 Agent 二进制、`gpufleet-agent-manifest.json` 和 `gpufleet-agent-update-public-key.txt`。Manifest 由 GitHub Secrets 中的 `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY` 签名；对应公钥内置在服务端，用于一键启用官方更新源。
 
 服务端不会下发 shell 命令，也不会 SSH/RDP 到设备。Agent 只允许在签名 manifest 和 artifact sha256 都校验通过后替换自己的二进制。
 
@@ -95,7 +97,7 @@ Manifest 使用 JSON，`signature` 是对去掉 `signature` 字段后的 manifes
 - 下载 artifact 后校验 sha256。
 - 写入当前二进制旁的 `.next` 文件。
 - 替换前保留 `.bak`。
-- Linux systemd 依靠 `Restart=always` 拉起新进程；Windows 安装脚本配置服务失败自动重启，当前 exe 被锁定时使用本地 helper 等待进程退出后替换。
+- Linux systemd 依靠 `Restart=always` 拉起新进程；Windows 安装脚本配置计划任务失败重启和网络连接恢复触发，当前 exe 被锁定时使用本地 helper 等待进程退出后替换。
 - 检查、跳过、失败、应用结果都会上报为 Agent 更新事件，服务端写入审计。
 
 ## 本地权限

@@ -61,7 +61,7 @@ go build `
   -Secret "replace-with-device-secret"
 ```
 
-安装脚本会创建名为 `GPUFleetAgent` 的计划任务，配置写入 `C:\ProgramData\GPUFleet\agent.env`，日志写入：
+安装脚本会创建名为 `GPUFleetAgent` 的计划任务，配置写入 `C:\ProgramData\GPUFleet\agent.env`。任务会开机启动、失败重试，并在 Windows NetworkProfile 网络连接事件后尝试恢复。日志写入：
 
 ```powershell
 Get-Content "C:\ProgramData\GPUFleet\logs\agent.log" -Tail 100

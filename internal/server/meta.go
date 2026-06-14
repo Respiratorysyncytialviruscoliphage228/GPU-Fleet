@@ -1324,6 +1324,15 @@ func normalizeProxyURL(proxyURL string) (string, error) {
 }
 
 func normalizeAgentUpdatePolicy(policy model.AgentUpdatePolicy) (model.AgentUpdatePolicy, error) {
+	policy.Source = strings.ToLower(strings.TrimSpace(policy.Source))
+	if policy.Source == "" {
+		policy.Source = "custom"
+	}
+	switch policy.Source {
+	case "official_github", "custom":
+	default:
+		return model.AgentUpdatePolicy{}, errors.New("agent update source must be official_github or custom")
+	}
 	policy.Mode = strings.ToLower(strings.TrimSpace(policy.Mode))
 	if policy.Mode == "" {
 		policy.Mode = "patch"

@@ -3201,6 +3201,7 @@ function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () =
 function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
   const { t } = useI18n();
   const emptyPolicy: AgentUpdatePolicy = {
+    source: 'official_github',
     enabled: false,
     mode: 'patch',
     desired_version: '',
@@ -3228,8 +3229,9 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
     setMessage('');
     setSaving(true);
     try {
-      await updateServerConfig({ agent_update: {
+      const result = await updateServerConfig({ agent_update: {
         ...policy,
+        source: String(policy.source || 'official_github').trim(),
         desired_version: String(policy.desired_version || '').trim(),
         manifest_url: String(policy.manifest_url || '').trim(),
         public_key: String(policy.public_key || '').trim(),
@@ -3237,7 +3239,9 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
         check_interval_seconds: Number(policy.check_interval_seconds || 1800),
         max_parallel: Number(policy.max_parallel || 1)
       } });
-      setMessage(policy.enabled ? t('Agent 自动更新已保存') : t('Agent 自动更新已关闭'));
+      const savedPolicy = result.service?.agent_update;
+      if (savedPolicy) setPolicy({ ...emptyPolicy, ...savedPolicy });
+      setMessage(policy.enabled ? (savedPolicy?.source === 'official_github' ? t('Agent 自动更新已保存，将使用官方 GitHub Release') : t('Agent 自动更新已保存')) : t('Agent 自动更新已关闭'));
       await onDone();
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'agent update policy save failed';
@@ -3251,6 +3255,7 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
     ? (policy.max_parallel && policy.max_parallel > 1 ? t('先更新 {count} 台，成功后继续', { count: policy.max_parallel }) : t('先更新 1 台，成功后继续'))
     : t('所有 Agent 按检查周期拉取');
   const help = t('启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。');
+  const sourceValue = policy.source === 'custom' || (!policy.source && (policy.manifest_url || policy.public_key)) ? 'custom' : 'official_github';
 
   return (
     <article className="panel setting-operation agent-update-card" data-testid="settings-agent-update">
@@ -3272,6 +3277,13 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
           <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label={t('Agent 更新策略说明')}>
             <CircleHelp size={14} />
           </button>
+        </label>
+        <label>
+          {t('更新源')}
+          <select value={sourceValue} onChange={(event) => patchPolicy({ source: event.target.value })}>
+            <option value="official_github">{t('官方 GitHub Release')}</option>
+            <option value="custom">{t('自定义签名源')}</option>
+          </select>
         </label>
         <div className="agent-update-summary">
           <span>{t('更新范围')}</span>
@@ -3322,7 +3334,7 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
           </label>
         </details>
       </form>
-      {message && <p className={message === t('Agent 自动更新已保存') || message === t('Agent 自动更新已关闭') ? 'notice' : 'error'}>{message}</p>}
+      {message && <p className={message === t('Agent 自动更新已保存') || message === t('Agent 自动更新已保存，将使用官方 GitHub Release') || message === t('Agent 自动更新已关闭') ? 'notice' : 'error'}>{message}</p>}
       {helpOpen && <InfoDialog title={t('Agent 自动更新')} body={help} onClose={() => setHelpOpen(false)} />}
     </article>
   );

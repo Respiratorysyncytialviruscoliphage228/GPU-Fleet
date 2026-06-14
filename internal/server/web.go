@@ -1916,11 +1916,19 @@ const dashboardHTML = `<!doctype html>
       }
       return '所有 Agent 按检查周期拉取';
     }
+    function agentUpdateSource(policy) {
+      const source = (policy.source || '').toLowerCase();
+      if (source === 'official_github') return 'official_github';
+      if (source === 'custom') return 'custom';
+      return (policy.manifest_url || policy.public_key) ? 'custom' : 'official_github';
+    }
     function agentUpdateControl(service) {
-      const policy = Object.assign({enabled: false, mode: 'patch', desired_version: '', manifest_url: '', public_key: '', check_interval_seconds: 1800, rollout: 'canary', max_parallel: 1}, (service && service.agent_update) || {});
+      const policy = Object.assign({source: 'official_github', enabled: false, mode: 'patch', desired_version: '', manifest_url: '', public_key: '', check_interval_seconds: 1800, rollout: 'canary', max_parallel: 1}, (service && service.agent_update) || {});
+      policy.source = agentUpdateSource(policy);
       const help = '启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。';
       return '<form class="settings-form agent-update-form" onsubmit="saveAgentUpdate(event)">' +
         '<label class="switch-row security-switch-row"><input name="enabled" id="agentUpdateSwitch" type="checkbox" ' + (policy.enabled ? 'checked' : '') + '><span id="agentUpdateSwitchLabel">' + (policy.enabled ? 'Agent 自更新已开启' : 'Agent 自更新已关闭') + '</span><button class="icon-button inline-help" type="button" onclick="alert(' + "'" + escJS(help) + "'" + ')" title="' + esc(help) + '">?</button></label>' +
+        '<label>更新源<select name="source"><option value="official_github"' + selected(policy.source, 'official_github') + '>官方 GitHub Release</option><option value="custom"' + selected(policy.source, 'custom') + '>自定义签名源</option></select></label>' +
         '<div class="agent-update-summary"><span>更新范围</span><strong>' + esc(agentUpdateScope(policy)) + '</strong></div>' +
         '<button class="secondary action-button" type="submit">保存策略</button>' +
         '<details class="advanced-settings agent-update-advanced"><summary>高级设置</summary>' +
@@ -1951,6 +1959,7 @@ const dashboardHTML = `<!doctype html>
       if (message) message.textContent = '';
       try {
         const result = await api('/api/v1/admin/server-config', {method: 'POST', body: JSON.stringify({agent_update: {
+          source: value('source') || 'official_github',
           enabled: !!(enabledInput && enabledInput.checked),
           mode: value('mode') || 'patch',
           desired_version: value('desired_version'),
@@ -1968,7 +1977,8 @@ const dashboardHTML = `<!doctype html>
         if (label) label.textContent = enabled ? 'Agent 自更新已开启' : 'Agent 自更新已关闭';
         if (message) {
           message.className = 'notice update-note';
-          message.textContent = enabled ? 'Agent 自动更新已保存' : 'Agent 自动更新已关闭';
+          const savedPolicy = result.service && result.service.agent_update || {};
+          message.textContent = enabled ? (agentUpdateSource(savedPolicy) === 'official_github' ? 'Agent 自动更新已保存，将使用官方 GitHub Release' : 'Agent 自动更新已保存') : 'Agent 自动更新已关闭';
         }
       } catch (err) {
         const detail = err && err.message ? err.message : String(err);

@@ -211,6 +211,13 @@ foreach ($targetName in $Targets) {
       throw "go build failed for gpufleet-$component $targetOS/$targetArch"
     }
 
+    if ($component -eq "agent") {
+      $updateAssetName = "gpufleet-agent_$versionValue`_$targetOS`_$targetArchLabel$targetExt"
+      $updateAssetPath = Join-Path $releaseRoot $updateAssetName
+      Copy-Item -LiteralPath $binaryPath -Destination $updateAssetPath -Force
+      Add-Checksum -ArchivePath $updateAssetPath -Lines $checksums
+    }
+
     if ($component -eq "server") {
       New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "web") | Out-Null
       Copy-Item -LiteralPath $webDist -Destination (Join-Path $packageDir "web") -Recurse -Force

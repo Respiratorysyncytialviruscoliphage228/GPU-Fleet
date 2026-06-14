@@ -1744,6 +1744,42 @@ func TestAgentUpdatePolicyUsesConfiguredDefaultSource(t *testing.T) {
 	}
 }
 
+func TestAgentUpdatePolicyUsesOfficialGitHubSourceByDefault(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var configResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		CheckIntervalSeconds: 600,
+		Rollout:              "canary",
+		MaxParallel:          1,
+	}}, cookie, http.StatusOK, &configResponse)
+	policy := configResponse.Service.AgentUpdate
+	if policy.Source != version.OfficialAgentUpdateSource {
+		t.Fatalf("expected official GitHub source, got %+v", policy)
+	}
+	if policy.ManifestURL != version.OfficialAgentUpdateManifestURL || policy.PublicKey != version.OfficialAgentUpdatePublicKey {
+		t.Fatalf("expected official Agent update source to be applied, got %+v", policy)
+	}
+}
+
+func TestAgentUpdatePolicyInfersCustomSourceForLegacyPolicy(t *testing.T) {
+	policy := sanitizeAgentUpdatePolicy(model.AgentUpdatePolicy{
+		Enabled:     true,
+		ManifestURL: "https://updates.example.com/gpufleet-agent.json",
+		PublicKey:   "base64-public-key",
+	})
+	if policy.Source != version.CustomAgentUpdateSource {
+		t.Fatalf("expected legacy custom policy source to be inferred, got %+v", policy)
+	}
+}
+
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

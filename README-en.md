@@ -28,7 +28,7 @@ Installation guide: [docs/14-installation.md](docs/14-installation.md)<br>
 
 ## Current Status
 
-GPUFleet is currently at `1.0.15`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, signed Agent self-update policy, anonymous aggregate telemetry, standard/advanced diagnostics packages, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
+GPUFleet is currently at `1.0.16`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, signed Agent self-update policy, anonymous aggregate telemetry, standard/advanced diagnostics packages, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 
@@ -273,7 +273,7 @@ Windows scheduled task. Prefer release packages so the client does not need Go:
   -Secret "replace-with-device-secret"
 ```
 
-The installer validates `gpufleet-agent.exe`, runs a one-shot upload preflight by default, stores credentials in `C:\ProgramData\GPUFleet\agent.env`, and creates a boot-start scheduled task named `GPUFleetAgent`. Logs are written here:
+The installer validates `gpufleet-agent.exe`, runs a one-shot upload preflight by default, stores credentials in `C:\ProgramData\GPUFleet\agent.env`, and creates a scheduled task named `GPUFleetAgent`. The task starts at boot, retries failures, and attempts recovery after Windows network reconnect events. Logs are written here:
 
 ```powershell
 Get-Content "C:\ProgramData\GPUFleet\logs\agent.log" -Tail 100
@@ -399,11 +399,11 @@ Build only the core matrix or explicit targets:
 .\scripts\build-release.ps1 -Targets windows/amd64,linux/amd64,linux/arm64
 ```
 
-After the version is fixed, manually run the GitHub `Release` workflow. It validates `internal/version`, `web/package.json`, `web/package-lock.json`, and `CHANGELOG.md`, builds the selected Server/Agent target matrix, and uses the matching changelog entry as the GitHub Release notes:
+After the version is fixed, manually run the GitHub `Release` workflow. It validates `internal/version`, `web/package.json`, `web/package-lock.json`, and `CHANGELOG.md`, builds the selected Server/Agent target matrix, raw Agent self-update binaries, signed manifest, and public-key file, and uses the matching changelog entry as the GitHub Release notes. Before the first signed Agent release, configure the GitHub repository secret `GPUFLEET_AGENT_UPDATE_ED25519_PRIVATE_KEY` with the base64 Ed25519 private key seed.
 
 ```text
 Actions -> Release -> Run workflow
-version: 1.0.15
+version: 1.0.16
 target_set: full
 targets: empty, or windows/amd64,linux/amd64,linux/arm64
 ```
@@ -412,7 +412,7 @@ targets: empty, or windows/amd64,linux/amd64,linux/arm64
 
 Server online update is enabled by default. Every 30 minutes, the server checks whether the current Git upstream has a fast-forwardable new commit. If an update exists, it builds the remote commit, pulls it, and schedules a server restart. Administrators can also manually check and apply from Settings. This mechanism only operates on the server's own repository and current server process; it never connects to or modifies client Agents. Update status is cached for one hour and shown first when opening Settings; administrators can still click check update to refresh immediately. Update supports a proxy URL and shows a full-screen blurred confirmation dialog before manual apply. Before replacing the server binary, the updater keeps a previous `.bak` binary and tries to recover it if replacement or startup fails.
 
-Agent update is a separate pull model. For ordinary users, Settings keeps the Agent automatic update switch, rollout summary, and save button simple. Deployments can prefill signed manifest URL and Ed25519 public key with `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`, `GPUFLEET_AGENT_UPDATE_PUBLIC_KEY`, or matching startup flags; advanced settings can override target version, update mode, interval, and max parallelism. A blank target version means the update mode selects the newest allowed patch. Agents fetch the policy over HMAC, download manifest and artifact themselves, verify signature and sha256, replace only their own binary, and report check, failure, apply, or rollback events to server audit. The server never sends shell commands to Agents.
+Agent update is a separate pull model. Settings uses the official GitHub Release source by default, so ordinary users only need to enable Agent automatic update and save. Advanced settings can still switch to a custom signed source or override target version, update mode, interval, and max parallelism. Deployments can also prefill a custom default source with `GPUFLEET_AGENT_UPDATE_MANIFEST_URL`, `GPUFLEET_AGENT_UPDATE_PUBLIC_KEY`, or matching startup flags. A blank target version means the update mode selects the newest allowed patch. Agents fetch the policy over HMAC, download manifest and artifact themselves, verify signature and sha256, replace only their own binary, and report check, failure, apply, or rollback events to server audit. The server never sends shell commands to Agents.
 
 ```mermaid
 sequenceDiagram
@@ -531,7 +531,7 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
-  --expected-version v1.0.15 `
+  --expected-version v1.0.16 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true

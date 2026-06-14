@@ -159,6 +159,34 @@ while (`$true) {
 "@ | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
+function Add-NetworkRecoveryTrigger {
+  param([string]$Name)
+
+  try {
+    $subscription = '<QueryList><Query Id="0" Path="Microsoft-Windows-NetworkProfile/Operational"><Select Path="Microsoft-Windows-NetworkProfile/Operational">*[System[(EventID=10000)]]</Select></Query></QueryList>'
+    $service = New-Object -ComObject "Schedule.Service"
+    $service.Connect()
+    $folder = $service.GetFolder("\")
+    $task = $folder.GetTask($Name)
+    $definition = $task.Definition
+    $exists = $false
+    foreach ($trigger in @($definition.Triggers)) {
+      if ($trigger.Type -eq 0 -and $trigger.Subscription -eq $subscription) {
+        $exists = $true
+        break
+      }
+    }
+    if (!$exists) {
+      $trigger = $definition.Triggers.Create(0)
+      $trigger.Enabled = $true
+      $trigger.Subscription = $subscription
+    }
+    $folder.RegisterTaskDefinition($Name, $definition, 6, "SYSTEM", $null, 5) | Out-Null
+  } catch {
+    Write-Warning "Unable to add Agent network recovery trigger: $_"
+  }
+}
+
 function Register-AgentTask {
   param(
     [string]$Name,
@@ -175,8 +203,10 @@ function Register-AgentTask {
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Days 3650) `
-    -RestartCount 3 `
-    -RestartInterval (New-TimeSpan -Minutes 1)
+    -RestartCount 999 `
+    -RestartInterval (New-TimeSpan -Minutes 1) `
+    -StartWhenAvailable `
+    -MultipleInstances IgnoreNew
 
   Register-ScheduledTask `
     -TaskName $Name `
@@ -186,6 +216,8 @@ function Register-AgentTask {
     -User "SYSTEM" `
     -RunLevel Highest `
     -Force | Out-Null
+
+  Add-NetworkRecoveryTrigger -Name $Name
 }
 
 function Test-AgentOnce {

@@ -606,7 +606,22 @@ func (a *App) withAgentUpdateDefaults(policy model.AgentUpdatePolicy) model.Agen
 	if !policy.Enabled {
 		return policy
 	}
+	policy.Source = strings.ToLower(strings.TrimSpace(policy.Source))
+	if policy.Source == version.OfficialAgentUpdateSource {
+		policy.ManifestURL = version.OfficialAgentUpdateManifestURL
+		policy.PublicKey = version.OfficialAgentUpdatePublicKey
+		return policy
+	}
 	current := a.meta.ServiceConfig().AgentUpdate
+	if policy.Source == "" && strings.TrimSpace(policy.ManifestURL) == "" && strings.TrimSpace(policy.PublicKey) == "" && strings.TrimSpace(current.ManifestURL) == "" && strings.TrimSpace(a.config.AgentUpdateManifestURL) == "" {
+		policy.Source = version.OfficialAgentUpdateSource
+		policy.ManifestURL = version.OfficialAgentUpdateManifestURL
+		policy.PublicKey = version.OfficialAgentUpdatePublicKey
+		return policy
+	}
+	if policy.Source == "" {
+		policy.Source = version.CustomAgentUpdateSource
+	}
 	if strings.TrimSpace(policy.ManifestURL) == "" {
 		if strings.TrimSpace(current.ManifestURL) != "" {
 			policy.ManifestURL = current.ManifestURL
@@ -1650,6 +1665,17 @@ func configReportAt(report *model.AgentConfigReport) time.Time {
 }
 
 func sanitizeAgentUpdatePolicy(policy model.AgentUpdatePolicy) model.AgentUpdatePolicy {
+	if strings.TrimSpace(policy.Source) == "" {
+		switch {
+		case strings.TrimSpace(policy.ManifestURL) == "" && strings.TrimSpace(policy.PublicKey) == "":
+			policy.Source = version.OfficialAgentUpdateSource
+		case strings.TrimSpace(policy.ManifestURL) == version.OfficialAgentUpdateManifestURL && strings.TrimSpace(policy.PublicKey) == version.OfficialAgentUpdatePublicKey:
+			policy.Source = version.OfficialAgentUpdateSource
+		default:
+			policy.Source = version.CustomAgentUpdateSource
+		}
+	}
+	policy.Source = limitText(strings.TrimSpace(policy.Source), 40)
 	policy.Mode = limitText(strings.TrimSpace(policy.Mode), 40)
 	policy.DesiredVersion = limitText(strings.TrimSpace(policy.DesiredVersion), 80)
 	policy.ManifestURL = limitText(redactURLCredentials(policy.ManifestURL), 260)
