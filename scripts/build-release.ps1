@@ -211,11 +211,14 @@ foreach ($targetName in $Targets) {
       throw "go build failed for gpufleet-$component $targetOS/$targetArch"
     }
 
+    $updateAssetName = ""
+    $updateAssetPath = ""
+    $updateAssetTempPath = ""
     if ($component -eq "agent") {
       $updateAssetName = "gpufleet-agent_$versionValue`_$targetOS`_$targetArchLabel$targetExt"
       $updateAssetPath = Join-Path $releaseRoot $updateAssetName
-      Copy-Item -LiteralPath $binaryPath -Destination $updateAssetPath -Force
-      Add-Checksum -ArchivePath $updateAssetPath -Lines $checksums
+      $updateAssetTempPath = Join-Path $releaseRoot "$updateAssetName.tmp"
+      Copy-Item -LiteralPath $binaryPath -Destination $updateAssetTempPath -Force
     }
 
     if ($component -eq "server") {
@@ -237,6 +240,13 @@ foreach ($targetName in $Targets) {
     Compress-Package -PackageDir $packageDir -ArchivePath $archivePath -Format $targetFormat
     Add-Checksum -ArchivePath $archivePath -Lines $checksums
     Remove-Item -LiteralPath $packageDir -Recurse -Force
+    if ($component -eq "agent") {
+      if (Test-Path -LiteralPath $updateAssetPath) {
+        Remove-Item -LiteralPath $updateAssetPath -Force
+      }
+      Move-Item -LiteralPath $updateAssetTempPath -Destination $updateAssetPath -Force
+      Add-Checksum -ArchivePath $updateAssetPath -Lines $checksums
+    }
   }
 }
 
