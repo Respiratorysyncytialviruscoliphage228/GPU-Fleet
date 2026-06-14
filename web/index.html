@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/brand/gpufleet-logo.svg" />
+    <script>
+      (() => {
+        try {
+          const stored = window.localStorage.getItem('gpufleet-theme');
+          const theme = stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'only light';
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'only light';
+        }
+      })();
+    </script>
     <title>GPUFleet</title>
   </head>
   <body>

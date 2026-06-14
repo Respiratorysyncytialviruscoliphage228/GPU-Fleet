@@ -4,15 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/brand/gpufleet-logo.svg" />
+    <script>
+      (() => {
+        try {
+          const stored = window.localStorage.getItem('gpufleet-theme');
+          const theme = stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'only light';
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'only light';
+        }
+      })();
+    </script>
     <title>GPUFleet</title>
-    <script type="module" crossorigin src="/assets/index-CH9Izf9t.js"></script>
+    <script type="module" crossorigin src="/assets/index-CRN1HvE0.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-DHg2UNQP.js">
     <link rel="modulepreload" crossorigin href="/assets/query-BXi1ceaY.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-Ddcpsjeh.js">
     <link rel="modulepreload" crossorigin href="/assets/charts-D1kGis8o.js">
     <link rel="modulepreload" crossorigin href="/assets/react-vendor-D_dGT5ke.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BPLydX7J.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-nTJl4BXk.css">
   </head>
   <body>
     <div id="root"></div>

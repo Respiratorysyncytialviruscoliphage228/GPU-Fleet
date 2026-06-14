@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: only light;
   --bg: #f3f5f7;
   --bg-strong: #e8edf1;
   --panel: #ffffff;
@@ -27,6 +27,10 @@
   --motion-fast: 150ms;
   --motion-base: 240ms;
   --motion-slow: 420ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: only light;
 }
 
 :root[data-theme="dark"] {
@@ -1617,7 +1621,7 @@ input:focus-visible {
 }
 
 .paper-login-shell {
-  color-scheme: light;
+  color-scheme: only light;
   --bg: #f3f5f7;
   --bg-strong: #e8edf1;
   --panel: #ffffff;
@@ -1638,6 +1642,12 @@ input:focus-visible {
   animation: fade-in 720ms var(--ease) both;
 }
 
+.paper-login-shell *,
+.login-lab-shell *,
+.poster-login * {
+  color-scheme: only light;
+}
+
 .paper-login-form {
   min-height: 100vh;
 }
@@ -1650,6 +1660,7 @@ label {
 }
 
 input {
+  color-scheme: inherit;
   min-height: 42px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -1660,6 +1671,7 @@ input {
 }
 
 select {
+  color-scheme: inherit;
   min-height: 42px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -1670,6 +1682,7 @@ select {
 }
 
 textarea {
+  color-scheme: inherit;
   min-height: 92px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -3006,7 +3019,7 @@ input[type="file"] {
 }
 
 .login-lab-shell {
-  color-scheme: light;
+  color-scheme: only light;
   --bg: #f3f5f7;
   --bg-strong: #e8edf1;
   --panel: #ffffff;

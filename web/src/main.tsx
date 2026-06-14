@@ -136,6 +136,7 @@ const updateNoticeKey = 'gpufleet-update-notice';
 const updateStatusCacheKey = 'gpufleet-update-status-cache';
 const updateStatusCacheTTL = 60 * 60 * 1000;
 const autoUpdateStatusTTL = 30 * 60 * 1000;
+const themeStorageKey = 'gpufleet-theme';
 
 type CachedUpdateStatus = {
   status: UpdateStatus;
@@ -163,9 +164,25 @@ function scheduleFleetReconnectRefresh(client: QueryClient) {
 }
 
 function initialTheme(): Theme {
-  const stored = window.localStorage.getItem('gpufleet-theme');
-  if (stored === 'light' || stored === 'dark') return stored;
+  return storedTheme() ?? systemTheme();
+}
+
+function storedTheme(): Theme | undefined {
+  const stored = window.localStorage.getItem(themeStorageKey);
+  return stored === 'light' || stored === 'dark' ? stored : undefined;
+}
+
+function systemTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function themeColorScheme(theme: Theme) {
+  return theme === 'dark' ? 'dark' : 'only light';
+}
+
+function applyDocumentTheme(theme: Theme) {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = themeColorScheme(theme);
 }
 
 function initialLanguage(): AppLanguage {
@@ -462,10 +479,17 @@ function App() {
   const loginLab = isLoginLabPath();
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-    window.localStorage.setItem('gpufleet-theme', theme);
+    applyDocumentTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => {
+      if (!storedTheme()) setTheme(media.matches ? 'dark' : 'light');
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh-CN' ? 'zh-CN' : 'en';
@@ -475,7 +499,11 @@ function App() {
   }, [language, t]);
 
   function toggleTheme() {
-    setTheme((current) => current === 'dark' ? 'light' : 'dark');
+    setTheme((current) => {
+      const next = current === 'dark' ? 'light' : 'dark';
+      window.localStorage.setItem(themeStorageKey, next);
+      return next;
+    });
   }
 
   function setLanguage(next: AppLanguage) {
