@@ -552,7 +552,7 @@ function App() {
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
       {loginLab ? (
-        <LoginConceptLab theme={theme} onToggleTheme={toggleTheme} />
+        <LoginConceptLab />
       ) : (
         <>
           {authState === 'checking' && <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />}
@@ -571,7 +571,7 @@ function App() {
           {authState === 'anonymous' && <Login onSuccess={() => {
             setAuthState('authenticated');
             void fetchServerUpdateNotice();
-          }} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
+          }} guestEnabled={guestEnabled} />}
           {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
           {authState === 'guest' && <GuestDashboard theme={theme} onToggleTheme={toggleTheme} />}
           <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
@@ -779,7 +779,7 @@ function SetupWizard({
   return mode === 'authenticated' ? createPortal(content, document.body) : content;
 }
 
-function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void; guestEnabled: boolean }) {
+function Login({ onSuccess, guestEnabled }: { onSuccess: () => void; guestEnabled: boolean }) {
   const { t } = useI18n();
   const [concept] = useState<LoginConcept>(() => randomLoginConcept());
   const pointerMotion = usePaperPointerMotion();
@@ -826,7 +826,6 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
         <section className="poster-auth-card" aria-label={t('登录面板')}>
           <div className="poster-auth-top">
             <Brand />
-            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           </div>
           <div className="poster-auth-copy">
             <h4>{t('登录')}</h4>
@@ -1121,12 +1120,24 @@ function usePaperPointerMotion() {
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLElement>) {
-    if (!ready || event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch') return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - bounds.left) / bounds.width - 0.5;
     const y = (event.clientY - bounds.top) / bounds.height - 0.5;
     event.currentTarget.style.setProperty('--paper-x', x.toFixed(3));
     event.currentTarget.style.setProperty('--paper-y', y.toFixed(3));
+    event.currentTarget.style.setProperty('--paper-shadow-x', `${(-x * 7).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-shadow-y', `${(-y * 5).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-bottom-x', `${(x * 18).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-bottom-y', `${(y * 9).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-sweep-x', `${(-x * 11).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-sweep-y', `${(-y * 7).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-shape-x', `${(x * 9).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-shape-y', `${(y * 6).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-corner-x', `${(x * 16).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-corner-y', `${(y * 10).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-grain-x', `${(-x * 7).toFixed(2)}px`);
+    event.currentTarget.style.setProperty('--paper-grain-y', `${(-y * 5).toFixed(2)}px`);
   }
 
   function onPointerLeave() {
@@ -1142,7 +1153,7 @@ const loginPreviewRatios: Array<{ ratio: LoginPreviewRatio; title: string }> = [
   { ratio: 'mobile', title: '9:16 移动端' }
 ];
 
-function LoginConceptLab({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+function LoginConceptLab() {
   const [conceptID, setConceptID] = useState<LoginConceptID>('editorial');
   const [ratio, setRatio] = useState<LoginPreviewRatio>('wide');
   const [guestEnabled, setGuestEnabled] = useState(true);
@@ -1158,7 +1169,6 @@ function LoginConceptLab({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
           <p>预览区只展示登录前真正会出现的内容；业务数据、节点状态和说明文案都不进入登录画面。</p>
         </div>
         <div className="login-lab-actions">
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button className="secondary action-button" type="button" onClick={() => window.location.assign('/')}>
             <LogIn size={17} />
             返回登录

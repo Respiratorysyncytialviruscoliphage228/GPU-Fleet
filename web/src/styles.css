@@ -1617,6 +1617,17 @@ input:focus-visible {
 }
 
 .paper-login-shell {
+  color-scheme: light;
+  --bg: #f3f5f7;
+  --bg-strong: #e8edf1;
+  --panel: #ffffff;
+  --panel-soft: #f9fbfc;
+  --text: #16212c;
+  --muted: #687789;
+  --line: #d9e0e7;
+  --line-strong: #c3ccd6;
+  --accent: #146c78;
+  --accent-strong: #0f5660;
   position: relative;
   z-index: 1;
   min-height: 100vh;
@@ -2995,6 +3006,19 @@ input[type="file"] {
 }
 
 .login-lab-shell {
+  color-scheme: light;
+  --bg: #f3f5f7;
+  --bg-strong: #e8edf1;
+  --panel: #ffffff;
+  --panel-soft: #f9fbfc;
+  --text: #16212c;
+  --muted: #687789;
+  --line: #d9e0e7;
+  --line-strong: #c3ccd6;
+  --accent: #146c78;
+  --accent-strong: #0f5660;
+  --shadow: 0 14px 34px rgba(30, 42, 54, 0.08);
+  --shadow-soft: 0 8px 22px rgba(30, 42, 54, 0.06);
   position: relative;
   z-index: 1;
   min-height: 100vh;
@@ -3212,6 +3236,18 @@ input[type="file"] {
   --poster-tilt: -.25deg;
   --paper-x: 0;
   --paper-y: 0;
+  --paper-shadow-x: 0px;
+  --paper-shadow-y: 0px;
+  --paper-bottom-x: 0px;
+  --paper-bottom-y: 0px;
+  --paper-sweep-x: 0px;
+  --paper-sweep-y: 0px;
+  --paper-shape-x: 0px;
+  --paper-shape-y: 0px;
+  --paper-corner-x: 0px;
+  --paper-corner-y: 0px;
+  --paper-grain-x: 0px;
+  --paper-grain-y: 0px;
   display: grid;
   place-items: center;
   padding: clamp(18px, 4vw, 52px);
@@ -3346,7 +3382,8 @@ input[type="file"] {
 }
 
 .poster-login.is-pointer-ready .poster-visual {
-  filter: drop-shadow(calc(var(--paper-x) * -7px) calc(var(--paper-y) * -5px) 8px rgba(0, 0, 0, .08));
+  filter: drop-shadow(var(--paper-shadow-x) var(--paper-shadow-y) 8px rgba(0, 0, 0, .08));
+  transition: filter 520ms var(--ease);
 }
 
 .poster-art,
@@ -3354,6 +3391,29 @@ input[type="file"] {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.poster-visual::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 8%;
+  height: clamp(18px, 4vw, 44px);
+  border-top: 2px solid color-mix(in srgb, var(--poster-accent) 34%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--poster-accent-2) 24%, transparent);
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--poster-accent-2) 12%, transparent), transparent),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--poster-dark-ink) 8%, transparent) 0 1px, transparent 1px 22px);
+  opacity: .48;
+  transform: translate3d(0, 0, 0);
+  transition: transform 720ms var(--ease), opacity 520ms var(--ease);
+  pointer-events: none;
+}
+
+.poster-login.is-pointer-ready .poster-visual::after {
+  opacity: .62;
+  transform: translate3d(var(--paper-bottom-x), var(--paper-bottom-y), 0);
 }
 
 .poster-art {
@@ -3365,7 +3425,12 @@ input[type="file"] {
   background:
     linear-gradient(90deg, transparent 0 18%, color-mix(in srgb, var(--poster-accent) 30%, transparent) 18% 19%, transparent 19% 74%, color-mix(in srgb, var(--poster-accent-2) 24%, transparent) 74% 76%, transparent 76%),
     linear-gradient(180deg, transparent 0 20%, color-mix(in srgb, var(--poster-accent) 18%, transparent) 20% 21%, transparent 21% 82%, color-mix(in srgb, var(--poster-accent-2) 16%, transparent) 82% 84%, transparent 84%);
+  transition: transform 780ms var(--ease), opacity 620ms var(--ease);
   animation: login-art-sweep 1180ms var(--ease) 720ms both;
+}
+
+.poster-login.is-pointer-ready .poster-art span:nth-child(1) {
+  transform: rotate(-10deg) translateX(8%) translate3d(var(--paper-sweep-x), var(--paper-sweep-y), 0);
 }
 
 .poster-art span:nth-child(2) {
@@ -3378,7 +3443,12 @@ input[type="file"] {
     repeating-linear-gradient(90deg, color-mix(in srgb, var(--poster-ink) 8%, transparent) 0 2px, transparent 2px 18px),
     linear-gradient(180deg, color-mix(in srgb, var(--poster-accent-2) 12%, transparent), transparent);
   transform: translateY(0);
+  transition: transform 680ms var(--ease), opacity 620ms var(--ease);
   animation: login-art-rise 1200ms var(--ease) 820ms both;
+}
+
+.poster-login.is-pointer-ready .poster-art span:nth-child(2) {
+  transform: translate3d(var(--paper-shape-x), var(--paper-shape-y), 0);
 }
 
 .poster-art span:nth-child(3) {
@@ -3392,7 +3462,7 @@ input[type="file"] {
 }
 
 .poster-login.is-pointer-ready .poster-art span:nth-child(3) {
-  transform: perspective(240px) rotateX(62deg) rotateZ(-5deg) translate3d(calc(var(--paper-x) * 16px), calc(var(--paper-y) * 10px), 0);
+  transform: perspective(240px) rotateX(62deg) rotateZ(-5deg) translate3d(var(--paper-corner-x), var(--paper-corner-y), 0);
 }
 
 .poster-art span:nth-child(4) {
@@ -3407,7 +3477,7 @@ input[type="file"] {
 }
 
 .poster-login.is-pointer-ready .poster-art span:nth-child(4) {
-  transform: translate3d(calc(var(--paper-x) * -7px), calc(var(--paper-y) * -5px), 0);
+  transform: translate3d(var(--paper-grain-x), var(--paper-grain-y), 0);
 }
 
 .poster-edition {
