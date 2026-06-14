@@ -3236,6 +3236,26 @@ input[type="file"] {
   --poster-tilt: -.25deg;
   --paper-x: 0;
   --paper-y: 0;
+  --paper-stage-x: 0px;
+  --paper-stage-y: 0px;
+  --paper-sheet-x: 0px;
+  --paper-sheet-y: 0px;
+  --paper-window-x: 0px;
+  --paper-window-y: 0px;
+  --paper-auth-top-x: 0px;
+  --paper-auth-top-y: 0px;
+  --paper-auth-copy-x: 0px;
+  --paper-auth-copy-y: 0px;
+  --paper-field-x: 0px;
+  --paper-field-y: 0px;
+  --paper-submit-x: 0px;
+  --paper-submit-y: 0px;
+  --paper-guest-x: 0px;
+  --paper-guest-y: 0px;
+  --paper-error-x: 0px;
+  --paper-error-y: 0px;
+  --paper-credit-x: 0px;
+  --paper-credit-y: 0px;
   --paper-shadow-x: 0px;
   --paper-shadow-y: 0px;
   --paper-bottom-x: 0px;
@@ -3256,6 +3276,12 @@ input[type="file"] {
     radial-gradient(circle at 14% 16%, color-mix(in srgb, var(--poster-accent) 18%, transparent), transparent 28%),
     radial-gradient(circle at 86% 72%, color-mix(in srgb, var(--poster-accent-2) 16%, transparent), transparent 30%),
     linear-gradient(145deg, color-mix(in srgb, var(--poster-bg) 82%, white), color-mix(in srgb, var(--poster-bg) 82%, black));
+  background-position:
+    calc(50% + var(--paper-stage-x)) calc(50% + var(--paper-stage-y)),
+    calc(50% - var(--paper-stage-x)) calc(50% - var(--paper-stage-y)),
+    50% 50%;
+  background-size: 112% 112%, 112% 112%, 100% 100%;
+  transition: background-position 360ms var(--ease);
   animation: login-poster-stage 1650ms cubic-bezier(.16, .84, .21, 1) both;
 }
 
@@ -3377,13 +3403,16 @@ input[type="file"] {
     0 34px 80px rgba(0, 0, 0, .20),
     inset 0 0 0 12px color-mix(in srgb, white 18%, transparent);
   transform: rotate(var(--poster-tilt));
-  transition: filter 360ms var(--ease);
+  transition: filter 360ms var(--ease), transform 340ms var(--ease);
+  will-change: transform, filter;
   animation: login-visual-in 1500ms cubic-bezier(.16, .84, .21, 1) 170ms both;
 }
 
 .poster-login.is-pointer-ready .poster-visual {
+  animation: none;
   filter: drop-shadow(var(--paper-shadow-x) var(--paper-shadow-y) 8px rgba(0, 0, 0, .08));
-  transition: filter 520ms var(--ease);
+  transform: rotate(var(--poster-tilt)) translate3d(var(--paper-sheet-x), var(--paper-sheet-y), 0);
+  transition: filter 360ms var(--ease), transform 340ms var(--ease);
 }
 
 .poster-art,
@@ -3407,7 +3436,7 @@ input[type="file"] {
     repeating-linear-gradient(90deg, color-mix(in srgb, var(--poster-dark-ink) 8%, transparent) 0 1px, transparent 1px 22px);
   opacity: .48;
   transform: translate3d(0, 0, 0);
-  transition: transform 720ms var(--ease), opacity 520ms var(--ease);
+  transition: transform 340ms var(--ease), opacity 360ms var(--ease);
   pointer-events: none;
 }
 
@@ -3420,12 +3449,17 @@ input[type="file"] {
   opacity: .92;
 }
 
+.poster-login.is-pointer-ready .poster-art span {
+  transition-duration: 340ms;
+}
+
 .poster-art span:nth-child(1) {
   transform: rotate(-10deg) translateX(8%);
   background:
     linear-gradient(90deg, transparent 0 18%, color-mix(in srgb, var(--poster-accent) 30%, transparent) 18% 19%, transparent 19% 74%, color-mix(in srgb, var(--poster-accent-2) 24%, transparent) 74% 76%, transparent 76%),
     linear-gradient(180deg, transparent 0 20%, color-mix(in srgb, var(--poster-accent) 18%, transparent) 20% 21%, transparent 21% 82%, color-mix(in srgb, var(--poster-accent-2) 16%, transparent) 82% 84%, transparent 84%);
   transition: transform 780ms var(--ease), opacity 620ms var(--ease);
+  will-change: transform;
   animation: login-art-sweep 1180ms var(--ease) 720ms both;
 }
 
@@ -3444,6 +3478,7 @@ input[type="file"] {
     linear-gradient(180deg, color-mix(in srgb, var(--poster-accent-2) 12%, transparent), transparent);
   transform: translateY(0);
   transition: transform 680ms var(--ease), opacity 620ms var(--ease);
+  will-change: transform;
   animation: login-art-rise 1200ms var(--ease) 820ms both;
 }
 
@@ -3458,7 +3493,8 @@ input[type="file"] {
   border-top: 2px solid color-mix(in srgb, var(--poster-accent) 66%, transparent);
   border-left: 2px solid color-mix(in srgb, var(--poster-accent-2) 66%, transparent);
   transform: perspective(240px) rotateX(62deg) rotateZ(-5deg) translate3d(0, 0, 0);
-  transition: transform 520ms var(--ease), opacity 520ms var(--ease);
+  transition: transform 340ms var(--ease), opacity 360ms var(--ease);
+  will-change: transform;
 }
 
 .poster-login.is-pointer-ready .poster-art span:nth-child(3) {
@@ -3473,7 +3509,8 @@ input[type="file"] {
   background-size: 9px 9px, 13px 13px;
   opacity: .8;
   transform: translate3d(0, 0, 0);
-  transition: transform 680ms var(--ease);
+  transition: transform 340ms var(--ease);
+  will-change: transform;
 }
 
 .poster-login.is-pointer-ready .poster-art span:nth-child(4) {
@@ -3581,7 +3618,67 @@ input[type="file"] {
     0 22px 46px rgba(0, 0, 0, .18),
     inset 0 0 0 1px color-mix(in srgb, white 36%, transparent);
   transform: rotate(calc(var(--poster-tilt) * -1));
+  transition: transform 340ms var(--ease), box-shadow 360ms var(--ease);
+  will-change: transform;
   animation: login-card-in 1480ms cubic-bezier(.16, .84, .21, 1) 560ms both;
+}
+
+.poster-login.is-pointer-ready .poster-auth-card {
+  animation: none;
+  box-shadow:
+    0 26px 56px rgba(0, 0, 0, .22),
+    inset 0 0 0 1px color-mix(in srgb, white 36%, transparent);
+  transform: rotate(calc(var(--poster-tilt) * -1)) translate3d(var(--paper-window-x), var(--paper-window-y), 0);
+}
+
+.poster-auth-top,
+.poster-auth-copy,
+.poster-password-field,
+.poster-auth-card .primary,
+.poster-auth-card .poster-guest-button,
+.poster-auth-card .error {
+  transition: transform 340ms var(--ease);
+  will-change: transform;
+}
+
+.poster-login.is-pointer-ready .poster-auth-top {
+  transform: translate3d(var(--paper-auth-top-x), var(--paper-auth-top-y), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-copy {
+  transform: translate3d(var(--paper-auth-copy-x), var(--paper-auth-copy-y), 0);
+}
+
+.poster-login.is-pointer-ready .poster-password-field {
+  transform: translate3d(var(--paper-field-x), var(--paper-field-y), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .primary {
+  transform: translate3d(var(--paper-submit-x), var(--paper-submit-y), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .primary:hover {
+  transform: translate3d(var(--paper-submit-x), calc(var(--paper-submit-y) - 1px), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .primary:active {
+  transform: translate3d(var(--paper-submit-x), var(--paper-submit-y), 0) scale(.98);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .poster-guest-button {
+  transform: translate3d(var(--paper-guest-x), var(--paper-guest-y), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .poster-guest-button:hover {
+  transform: translate3d(var(--paper-guest-x), calc(var(--paper-guest-y) - 1px), 0);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .poster-guest-button:active {
+  transform: translate3d(var(--paper-guest-x), var(--paper-guest-y), 0) scale(.98);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card .error {
+  transform: translate3d(var(--paper-error-x), var(--paper-error-y), 0);
 }
 
 .poster-auth-card::before {
@@ -3705,7 +3802,13 @@ input[type="file"] {
   text-decoration: none;
   opacity: .52;
   backdrop-filter: blur(8px);
-  transition: opacity var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+  transform: translate3d(0, 0, 0);
+  transition: opacity var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease), transform 340ms var(--ease);
+  will-change: transform;
+}
+
+.poster-login.is-pointer-ready .paper-github-credit {
+  transform: translate3d(var(--paper-credit-x), var(--paper-credit-y), 0);
 }
 
 .paper-github-credit:hover {
@@ -3713,7 +3816,7 @@ input[type="file"] {
   background: color-mix(in srgb, var(--poster-paper) 86%, white);
   color: var(--poster-dark-ink);
   opacity: .9;
-  transform: translateY(-1px);
+  transform: translate3d(var(--paper-credit-x), calc(var(--paper-credit-y) - 1px), 0);
 }
 
 .paper-github-credit svg {

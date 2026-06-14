@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1110,34 +1110,121 @@ function randomLoginConcept() {
   return loginConcepts[Math.floor(Math.random() * loginConcepts.length)] ?? loginConcepts[0];
 }
 
+type PaperMotionPoint = {
+  x: number;
+  y: number;
+};
+
+function clampPaperMotion(value: number) {
+  return Math.max(-0.5, Math.min(0.5, value));
+}
+
+function setPaperMotionVariables(element: HTMLElement, x: number, y: number) {
+  element.style.setProperty('--paper-x', x.toFixed(3));
+  element.style.setProperty('--paper-y', y.toFixed(3));
+  element.style.setProperty('--paper-stage-x', `${(x * 10).toFixed(2)}px`);
+  element.style.setProperty('--paper-stage-y', `${(y * 7).toFixed(2)}px`);
+  element.style.setProperty('--paper-sheet-x', `${(-x * 34).toFixed(2)}px`);
+  element.style.setProperty('--paper-sheet-y', `${(-y * 22).toFixed(2)}px`);
+  element.style.setProperty('--paper-window-x', `${(x * 48).toFixed(2)}px`);
+  element.style.setProperty('--paper-window-y', `${(y * 31).toFixed(2)}px`);
+  element.style.setProperty('--paper-auth-top-x', `${(x * 7).toFixed(2)}px`);
+  element.style.setProperty('--paper-auth-top-y', `${(y * 4).toFixed(2)}px`);
+  element.style.setProperty('--paper-auth-copy-x', `${(x * 10).toFixed(2)}px`);
+  element.style.setProperty('--paper-auth-copy-y', `${(y * 6).toFixed(2)}px`);
+  element.style.setProperty('--paper-field-x', `${(x * 14).toFixed(2)}px`);
+  element.style.setProperty('--paper-field-y', `${(y * 9).toFixed(2)}px`);
+  element.style.setProperty('--paper-submit-x', `${(x * 18).toFixed(2)}px`);
+  element.style.setProperty('--paper-submit-y', `${(y * 11).toFixed(2)}px`);
+  element.style.setProperty('--paper-guest-x', `${(x * 22).toFixed(2)}px`);
+  element.style.setProperty('--paper-guest-y', `${(y * 13).toFixed(2)}px`);
+  element.style.setProperty('--paper-error-x', `${(x * 12).toFixed(2)}px`);
+  element.style.setProperty('--paper-error-y', `${(y * 8).toFixed(2)}px`);
+  element.style.setProperty('--paper-credit-x', `${(x * 20).toFixed(2)}px`);
+  element.style.setProperty('--paper-credit-y', `${(y * 12).toFixed(2)}px`);
+  element.style.setProperty('--paper-shadow-x', `${(-x * 18).toFixed(2)}px`);
+  element.style.setProperty('--paper-shadow-y', `${(-y * 12).toFixed(2)}px`);
+  element.style.setProperty('--paper-bottom-x', `${(x * 58).toFixed(2)}px`);
+  element.style.setProperty('--paper-bottom-y', `${(y * 34).toFixed(2)}px`);
+  element.style.setProperty('--paper-sweep-x', `${(-x * 44).toFixed(2)}px`);
+  element.style.setProperty('--paper-sweep-y', `${(-y * 28).toFixed(2)}px`);
+  element.style.setProperty('--paper-shape-x', `${(x * 34).toFixed(2)}px`);
+  element.style.setProperty('--paper-shape-y', `${(y * 22).toFixed(2)}px`);
+  element.style.setProperty('--paper-corner-x', `${(x * 52).toFixed(2)}px`);
+  element.style.setProperty('--paper-corner-y', `${(y * 32).toFixed(2)}px`);
+  element.style.setProperty('--paper-grain-x', `${(-x * 24).toFixed(2)}px`);
+  element.style.setProperty('--paper-grain-y', `${(-y * 16).toFixed(2)}px`);
+}
+
 function usePaperPointerMotion() {
   const [ready, setReady] = useState(false);
+  const elementRef = useRef<HTMLElement | null>(null);
+  const currentRef = useRef<PaperMotionPoint>({ x: 0, y: 0 });
+  const targetRef = useRef<PaperMotionPoint>({ x: 0, y: 0 });
+  const frameRef = useRef<number | null>(null);
+  const readyRef = useRef(false);
+  const settleTimeoutRef = useRef<number | null>(null);
+  const acceptTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+      if (settleTimeoutRef.current !== null) window.clearTimeout(settleTimeoutRef.current);
+      if (acceptTimeoutRef.current !== null) window.clearTimeout(acceptTimeoutRef.current);
+    };
+  }, []);
+
+  function animateMotion() {
+    const element = elementRef.current;
+    if (!element || !readyRef.current) {
+      frameRef.current = null;
+      return;
+    }
+    const current = currentRef.current;
+    const target = targetRef.current;
+    const next = {
+      x: current.x + (target.x - current.x) * 0.11,
+      y: current.y + (target.y - current.y) * 0.11
+    };
+    const settled = Math.abs(target.x - next.x) < 0.001 && Math.abs(target.y - next.y) < 0.001;
+    currentRef.current = settled ? target : next;
+    setPaperMotionVariables(element, currentRef.current.x, currentRef.current.y);
+    frameRef.current = settled ? null : window.requestAnimationFrame(animateMotion);
+  }
+
+  function startMotion() {
+    if (frameRef.current === null) {
+      frameRef.current = window.requestAnimationFrame(animateMotion);
+    }
+  }
 
   function onAnimationEnd(event: React.AnimationEvent<HTMLElement>) {
     if (event.currentTarget === event.target) {
-      window.setTimeout(() => setReady(true), 460);
+      const element = event.currentTarget;
+      elementRef.current = element;
+      if (settleTimeoutRef.current !== null) window.clearTimeout(settleTimeoutRef.current);
+      if (acceptTimeoutRef.current !== null) window.clearTimeout(acceptTimeoutRef.current);
+      settleTimeoutRef.current = window.setTimeout(() => {
+        currentRef.current = { x: 0, y: 0 };
+        targetRef.current = { x: 0, y: 0 };
+        setPaperMotionVariables(element, 0, 0);
+        setReady(true);
+        acceptTimeoutRef.current = window.setTimeout(() => {
+          readyRef.current = true;
+        }, 120);
+      }, 460);
     }
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLElement>) {
     if (event.pointerType === 'touch') return;
+    elementRef.current = event.currentTarget;
+    if (!readyRef.current) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - bounds.left) / bounds.width - 0.5;
-    const y = (event.clientY - bounds.top) / bounds.height - 0.5;
-    event.currentTarget.style.setProperty('--paper-x', x.toFixed(3));
-    event.currentTarget.style.setProperty('--paper-y', y.toFixed(3));
-    event.currentTarget.style.setProperty('--paper-shadow-x', `${(-x * 7).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-shadow-y', `${(-y * 5).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-bottom-x', `${(x * 18).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-bottom-y', `${(y * 9).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-sweep-x', `${(-x * 11).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-sweep-y', `${(-y * 7).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-shape-x', `${(x * 9).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-shape-y', `${(y * 6).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-corner-x', `${(x * 16).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-corner-y', `${(y * 10).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-grain-x', `${(-x * 7).toFixed(2)}px`);
-    event.currentTarget.style.setProperty('--paper-grain-y', `${(-y * 5).toFixed(2)}px`);
+    const x = clampPaperMotion((event.clientX - bounds.left) / bounds.width - 0.5);
+    const y = clampPaperMotion((event.clientY - bounds.top) / bounds.height - 0.5);
+    targetRef.current = { x, y };
+    startMotion();
   }
 
   function onPointerLeave() {
