@@ -24,6 +24,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 增强 Agent 断网恢复能力：HTTP 上传在网络/超时错误后会丢弃空闲连接，本地队列会正确保留可重试失败并跳过永久坏批次，Windows 计划任务新增网络重连恢复触发和更高失败重启次数。
 - en-US: Improved Agent recovery after network loss: HTTP uploads now drop idle connections after network/timeout errors, the local queue keeps retryable failures while skipping permanently bad batches, and the Windows scheduled task adds a network reconnect recovery trigger plus a higher failure restart count.
+- zh-CN: 登录页错误提示改为本地化胶囊：密码错误、请求过频和网络异常不再露出英文后端原文，卡片会轻轻展开，提示文字以更柔和的弹性节奏浮现。
+- en-US: Login errors now appear as localized capsules: password, rate-limit, and network failures no longer expose raw backend text, while the card gently expands and the message enters with a softer elastic motion.
 
 ## [1.0.15] - 2026-06-14
 

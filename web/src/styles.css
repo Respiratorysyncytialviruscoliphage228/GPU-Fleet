@@ -3602,6 +3602,7 @@ input[type="file"] {
 .poster-auth-card {
   position: relative;
   z-index: 2;
+  --paper-card-scale: 1;
   min-width: 0;
   width: min(360px, 78%);
   display: grid;
@@ -3617,8 +3618,8 @@ input[type="file"] {
   box-shadow:
     0 22px 46px rgba(0, 0, 0, .18),
     inset 0 0 0 1px color-mix(in srgb, white 36%, transparent);
-  transform: rotate(calc(var(--poster-tilt) * -1));
-  transition: transform 340ms var(--ease), box-shadow 360ms var(--ease);
+  transform: rotate(calc(var(--poster-tilt) * -1)) scale(var(--paper-card-scale));
+  transition: transform 520ms var(--ease-spring), box-shadow 420ms var(--ease), border-color 420ms var(--ease);
   will-change: transform;
   animation: login-card-in 1480ms cubic-bezier(.16, .84, .21, 1) 560ms both;
 }
@@ -3628,7 +3629,23 @@ input[type="file"] {
   box-shadow:
     0 26px 56px rgba(0, 0, 0, .22),
     inset 0 0 0 1px color-mix(in srgb, white 36%, transparent);
-  transform: rotate(calc(var(--poster-tilt) * -1)) translate3d(var(--paper-window-x), var(--paper-window-y), 0);
+  transform: rotate(calc(var(--poster-tilt) * -1)) translate3d(var(--paper-window-x), var(--paper-window-y), 0) scale(var(--paper-card-scale));
+}
+
+.poster-auth-card.has-error {
+  --paper-card-scale: 1.028;
+  border-color: color-mix(in srgb, var(--bad) 30%, var(--poster-dark-ink) 12%);
+  box-shadow:
+    0 30px 66px rgba(0, 0, 0, .23),
+    0 0 0 6px color-mix(in srgb, var(--bad) 10%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 42%, transparent);
+}
+
+.poster-login.is-pointer-ready .poster-auth-card.has-error {
+  box-shadow:
+    0 32px 70px rgba(0, 0, 0, .25),
+    0 0 0 6px color-mix(in srgb, var(--bad) 10%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 42%, transparent);
 }
 
 .poster-auth-top,
@@ -3781,6 +3798,35 @@ input[type="file"] {
   margin: 0;
   color: var(--poster-dark-ink);
   background: color-mix(in srgb, var(--poster-paper) 86%, white);
+}
+
+.poster-auth-card .login-error-pill {
+  justify-self: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: -2px 0 0;
+  border: 1px solid color-mix(in srgb, var(--bad) 38%, var(--poster-line));
+  border-radius: 999px;
+  padding: 7px 12px;
+  background:
+    radial-gradient(circle at 18% 20%, color-mix(in srgb, white 52%, transparent), transparent 42%),
+    color-mix(in srgb, var(--bad-soft) 72%, var(--poster-paper));
+  color: color-mix(in srgb, var(--bad) 82%, var(--poster-dark-ink));
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.28;
+  text-align: center;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bad) 16%, transparent);
+  animation: login-error-pill-in 520ms var(--ease) both;
+}
+
+.poster-auth-card .login-error-pill span {
+  display: block;
+  animation: login-error-text-in 620ms cubic-bezier(.16, .84, .21, 1.08) both;
 }
 
 .paper-github-credit {
@@ -3965,6 +4011,17 @@ input[type="file"] {
 @keyframes login-art-rise {
   from { transform: translateY(10px); opacity: .38; }
   to { transform: translateY(0); opacity: .86; }
+}
+
+@keyframes login-error-pill-in {
+  0% { opacity: 0; clip-path: inset(0 44% round 999px); filter: blur(2px); }
+  100% { opacity: 1; clip-path: inset(0 round 999px); filter: blur(0); }
+}
+
+@keyframes login-error-text-in {
+  0% { opacity: 0; transform: translateY(-7px) scale(.88); }
+  58% { opacity: 1; transform: translateY(2px) scale(1.045); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes view-enter {

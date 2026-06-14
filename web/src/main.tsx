@@ -795,7 +795,7 @@ function Login({ onSuccess, guestEnabled }: { onSuccess: () => void; guestEnable
       await login(password);
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'login failed');
+      setError(loginErrorMessage(err, t));
     } finally {
       setLoading(false);
     }
@@ -823,7 +823,7 @@ function Login({ onSuccess, guestEnabled }: { onSuccess: () => void; guestEnable
           </div>
         </div>
 
-        <section className="poster-auth-card" aria-label={t('登录面板')}>
+        <section className={`poster-auth-card ${error ? 'has-error' : ''}`} aria-label={t('登录面板')}>
           <div className="poster-auth-top">
             <Brand />
           </div>
@@ -843,12 +843,35 @@ function Login({ onSuccess, guestEnabled }: { onSuccess: () => void; guestEnable
               {t('访客访问')}
             </button>
           )}
-          {error && <p className="error">{error}</p>}
+          {error && (
+            <p className="error login-error-pill" role="alert" key={error}>
+              <span>{error}</span>
+            </p>
+          )}
         </section>
         <GitHubCredit />
       </form>
     </main>
   );
+}
+
+function loginErrorMessage(err: unknown, t: ReturnType<typeof makeTranslator>) {
+  const raw = err instanceof Error ? err.message.trim() : '';
+  const normalized = raw.toLowerCase();
+  if (!raw) return t('登录失败，请稍后再试');
+  if (raw.includes('请求过于频繁')) return raw;
+  if (normalized.includes('too many requests')) return t('登录尝试过于频繁，请稍后再试');
+  if (normalized.includes('invalid credentials') || normalized === 'unauthorized') return t('密码不正确，请再试一次');
+  if (
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror') ||
+    normalized.includes('bad gateway') ||
+    normalized.includes('service unavailable') ||
+    normalized.includes('gateway timeout')
+  ) {
+    return t('无法连接服务端，请检查网络后重试');
+  }
+  return t('登录失败，请稍后再试');
 }
 
 type LoginConceptID = string;
